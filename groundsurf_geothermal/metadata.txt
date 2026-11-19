@@ -2,11 +2,11 @@
 name=GroundSurf Geothermal
 qgisMinimumVersion=3.34
 qgisMaximumVersion=3.99
-description=Group borehole records from QGIS layers into individual wells and lithological logs; local 3D modelling.
-version=0.4.5
+description=Import PointZ contact elevations from QGIS, choose source CRS, and inspect wells or model 3D geology.
+version=0.4.6
 author=GroundSurf
 email=tzuk.ls@outlook.com
-about=Experimental QGIS 3.34+ geological well database: group repeated borehole rows into individual wells and geological intervals, map attributes automatically, link maps and export preliminary 3D models. Entirely local. Built-in Python standard library only; external ParaView is optional for 3D viewing. No validated geothermal simulation or server transfer. Feedback: tzuk.ls@outlook.com. Tutorials: https://www.youtube.com/@Ground-Surf.
+about=Experimental offline QGIS 3.34+ geological modelling: import ID/X/Y/Z/Strata PointZ contacts or depth-based logs from open QGIS layers, select correct horizontal CRS without modifying originals, browse contacts, create preliminary 3D surfaces and ParaView exports. Not a validated geothermal solver. Built-in Python standard library only; external ParaView is optional for 3D viewing. No validated geothermal simulation or server transfer. Feedback: tzuk.ls@outlook.com. Tutorials: https://www.youtube.com/@Ground-Surf.
 category=Database
 tags=geothermal,groundwater,wells,geology,geopackage
 homepage=https://github.com/wtzet-eng/groundsurf-geothermal-qgis

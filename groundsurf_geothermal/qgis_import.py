@@ -15,12 +15,14 @@ import math
 from qgis.PyQt.QtCore import Qt
 from qgis.PyQt.QtWidgets import (
     QCheckBox, QComboBox, QDialog, QDialogButtonBox, QFormLayout,
-    QGroupBox, QLabel, QMessageBox, QPushButton, QTabWidget, QVBoxLayout,
+    QGroupBox, QLabel, QLineEdit, QMessageBox, QPushButton, QTabWidget, QVBoxLayout,
 )
 from qgis.core import (
     QgsCoordinateReferenceSystem, QgsCoordinateTransform, QgsGeometry,
-    QgsProject, QgsRasterLayer, QgsVectorLayer, QgsWkbTypes,
+    QgsProject, QgsRasterLayer, QgsVectorLayer, QgsWkbTypes, QgsPointXY,
 )
+
+from qgis.gui import QgsProjectionSelectionWidget
 
 from . import db, storage
 
@@ -118,28 +120,35 @@ def _source_value(feature, key):
 
 
 
-def checked_wgs84_point(feature, layer, transform):
+def checked_wgs84_point(feature, layer, transform, source_crs=None, xy_override=None):
     """Return WGS84 lon/lat from *geometry* with an actionable CRS error.
 
     Geometry coordinates are never silently swapped or guessed, because a
     guessed CRS could place a borehole far from its real location.
     """
-    geom = QgsGeometry(feature.geometry())
-    if geom.isEmpty():
-        raise ValueError("missing point geometry")
-    if geom.isMultipart():
-        points = geom.asMultiPoint()
-        if len(points) != 1:
-            raise ValueError("multipoint well must contain exactly one point")
-        original = points[0]
+    if xy_override is None:
+        geom = QgsGeometry(feature.geometry())
+        if geom.isEmpty():
+            raise ValueError("missing point geometry")
+        if geom.isMultipart():
+            points = geom.asMultiPoint()
+            if len(points) != 1:
+                raise ValueError("multipoint well must contain exactly one point")
+            original = points[0]
+        else:
+            original = geom.asPoint()
+        x, y = float(original.x()), float(original.y())
+        coordinate_source = "geometry"
     else:
-        original = geom.asPoint()
-
-    x, y = float(original.x()), float(original.y())
-    crs = layer.crs()
+        x, y = float(xy_override[0]), float(xy_override[1])
+        geom = QgsGeometry.fromPointXY(QgsPointXY(x, y))
+        coordinate_source = "attribute fields"
+    crs = source_crs or layer.crs()
     crs_name = crs.authid() or crs.description() or "unknown CRS"
+    layer_crs = layer.crs().authid() or "unlabelled"
     context = (
-        f"Layer '{layer.name()}' declares {crs_name}; "
+        f"Layer '{layer.name()}', interpreting {coordinate_source} "
+        f"as {crs_name} (layer declares {layer_crs}); "
         f"source geometry X={x:.6f}, Y={y:.6f}."
     )
     if not math.isfinite(x) or not math.isfinite(y):
@@ -181,15 +190,16 @@ def checked_wgs84_point(feature, layer, transform):
         )
     return (lon, lat)
 
-def prepare_well_records(layer, mapping, selected_only=False):
+def prepare_well_records(layer, mapping, selected_only=False,
+                         source_crs=None):
     """Validate all features and transform geometry before any GPKG write.
 
     Caller should use storage.add_wells() only after this function succeeds.
     """
     if not is_point_layer(layer):
         raise ValueError("Only QGIS point layers can be copied as wells")
-    if not layer.crs().isValid():
-        raise ValueError("The source QGIS layer has no valid CRS")
+    if not (source_crs or layer.crs()).isValid():
+        raise ValueError("Select a valid source coordinate reference system")
     declared = {field.name() for field in layer.fields()}
     for target, source_field in mapping.items():
         if source_field and source_field not in declared:
@@ -204,7 +214,7 @@ def prepare_well_records(layer, mapping, selected_only=False):
         features = layer.getFeatures()
 
     to_wgs84 = QgsCoordinateTransform(
-        layer.crs(), QgsCoordinateReferenceSystem("EPSG:4326"),
+        source_crs or layer.crs(), QgsCoordinateReferenceSystem("EPSG:4326"),
         QgsProject.instance()
     )
     records, ids = [], set()
@@ -214,7 +224,7 @@ def prepare_well_records(layer, mapping, selected_only=False):
         label = f"Feature {feature.id()}"
         try:
             longitude, latitude = checked_wgs84_point(
-                feature, layer, to_wgs84
+                feature, layer, to_wgs84, source_crs=source_crs
             )
             mapped = {
                 target: _source_value(feature, mapping.get(target))
@@ -239,9 +249,12 @@ def prepare_well_records(layer, mapping, selected_only=False):
     return records
 
 
-def import_wells(layer, groundsurf_wells, mapping, selected_only=False):
+def import_wells(layer, groundsurf_wells, mapping, selected_only=False,
+                 source_crs=None):
     """All-or-nothing copy into the GroundSurf GeoPackage."""
-    records = prepare_well_records(layer, mapping, selected_only)
+    records = prepare_well_records(
+        layer, mapping, selected_only, source_crs=source_crs
+    )
     count = storage.add_wells(groundsurf_wells, records)
     return count
 
@@ -332,6 +345,15 @@ class ImportFromQGISDialog(QDialog):
                 f"{layer.name()}  [{cls} · {layer.providerType()}]", layer.id()
             )
         form.addRow("Open QGIS layer", self.layer_combo)
+        self.source_crs = QgsProjectionSelectionWidget()
+        form.addRow("Source X/Y CRS (for import only)", self.source_crs)
+        self.crs_note = QLabel(
+            "Choose the CRS in which the source X/Y coordinates were "
+            "originally recorded. This does NOT alter the QGIS layer. "
+            "GroundSurf will not guess an unknown source CRS."
+        )
+        self.crs_note.setWordWrap(True)
+        form.addRow(self.crs_note)
         self.mode_combo = QComboBox()
         form.addRow("Operation", self.mode_combo)
         layout.addLayout(form)
@@ -378,6 +400,42 @@ class ImportFromQGISDialog(QDialog):
         note.setWordWrap(True)
         interval_layout.addRow(note)
         self.well_tabs.addTab(self.interval_box, "Geological intervals")
+
+        # PointZ/XYZ stratigraphic contacts (Z is elevation, not depth).
+        self.contact_box = QGroupBox("3D stratigraphic contact elevations")
+        contact_form = QFormLayout(self.contact_box)
+        self.contact_fields = {}
+        for key, caption in (
+            ("well_id", "Borehole ID"),
+            ("formation_code", "Stratigraphic unit"),
+            ("elevation_m", "Contact Z elevation"),
+            ("x", "X column (optional)"),
+            ("y", "Y column (optional)"),
+        ):
+            entry = QComboBox()
+            self.contact_fields[key] = entry
+            contact_form.addRow(caption, entry)
+        self.use_xy_fields = QCheckBox("Use attribute X and Y instead of point geometry")
+        self.use_xy_fields.toggled.connect(self._update_contact_fields)
+        contact_form.addRow(self.use_xy_fields)
+        self.use_point_z = QCheckBox("Use PointZ geometry height instead of Z column")
+        self.use_point_z.toggled.connect(self._update_contact_fields)
+        contact_form.addRow(self.use_point_z)
+        self.vertical_reference = QLineEdit()
+        self.vertical_reference.setPlaceholderText(
+            "Unspecified — enter verified Z height datum if known"
+        )
+        contact_form.addRow("Vertical reference / datum", self.vertical_reference)
+        self.contact_selected_only = QCheckBox("Import selected records only")
+        contact_form.addRow(self.contact_selected_only)
+        contact_note = QLabel(
+            "Z means contact ELEVATION, not depth below ground. "
+            "Repeated IDs form individual wells. Duplicate unit names "
+            "are preserved and flagged, never silently corrected."
+        )
+        contact_note.setWordWrap(True)
+        contact_form.addRow(contact_note)
+        self.well_tabs.addTab(self.contact_box, "PointZ / contact elevations")
         layout.addWidget(self.well_tabs)
 
         self.preview_button = QPushButton("Preview grouped boreholes")
@@ -405,15 +463,51 @@ class ImportFromQGISDialog(QDialog):
     def selected_layer(self):
         return QgsProject.instance().mapLayer(self.layer_combo.currentData())
 
+    def _update_contact_fields(self, *_):
+        for key in ("x", "y"):
+            self.contact_fields[key].setEnabled(self.use_xy_fields.isChecked())
+        self.contact_fields["elevation_m"].setEnabled(
+            not self.use_point_z.isChecked()
+        )
+
+    def _contact_selection(self):
+        return {
+            "mode": "contacts",
+            "layer": self.selected_layer(),
+            "fields": {
+                name: combo.currentData()
+                for name, combo in self.contact_fields.items()
+            },
+            "source_crs": self.source_crs.crs(),
+            "use_xy_fields": self.use_xy_fields.isChecked(),
+            "use_geometry_z": self.use_point_z.isChecked(),
+            "vertical_datum": self.vertical_reference.text(),
+            "selected_only": self.contact_selected_only.isChecked(),
+        }
+
     def _update_layer(self, *_):
         layer = self.selected_layer()
         self.mode_combo.blockSignals(True)
         self.mode_combo.clear()
         grouped = False
+        is_contacts = False
         if layer is not None and is_point_layer(layer):
             self.mode_combo.addItem("Copy point features as GroundSurf wells", "wells")
             self.mode_combo.addItem(
                 "Group repeated borehole rows into individual well logs", "grouped"
+            )
+            self.mode_combo.addItem(
+                "Import PointZ geological contact elevations (ID / X / Y / Z / Strata)",
+                "contacts",
+            )
+            from . import elevation_import
+            fields = elevation_import.detect_fields(
+                [f.name() for f in layer.fields()]
+            )
+            is_contacts = bool(
+                fields.get("well_id") and fields.get("formation_code")
+                and (fields.get("elevation_m")
+                     or QgsWkbTypes.hasZ(layer.wkbType()))
             )
             from . import grouped_import
             mapping = grouped_import.default_group_well_mapping(
@@ -432,9 +526,13 @@ class ImportFromQGISDialog(QDialog):
                     if candidate:
                         seen.add(candidate)
         self.mode_combo.addItem("Link existing map source (no data copied)", "map")
-        if grouped:
+        if is_contacts:
+            self.mode_combo.setCurrentIndex(self.mode_combo.findData("contacts"))
+        elif grouped:
             self.mode_combo.setCurrentIndex(self.mode_combo.findData("grouped"))
         self.mode_combo.blockSignals(False)
+        if layer is not None and isinstance(layer, QgsVectorLayer):
+            self.source_crs.setCrs(layer.crs())
         self._update_mode()
 
     def _update_mode(self, *_):
@@ -444,14 +542,49 @@ class ImportFromQGISDialog(QDialog):
             self.details.setText("No layers are open in the QGIS project.")
             return
         mode = self.mode_combo.currentData()
-        is_wells = mode in ("wells", "grouped")
         is_group = mode == "grouped"
-        self.well_tabs.setVisible(is_wells)
+        is_contacts = mode == "contacts"
+        is_wells = mode in ("wells", "grouped")
+        self.source_crs.setVisible(is_wells or is_contacts)
+        self.crs_note.setVisible(is_wells or is_contacts)
+        self.well_tabs.setVisible(is_wells or is_contacts)
+        self.well_tabs.setTabEnabled(0, is_wells)
         self.well_tabs.setTabEnabled(1, is_group)
-        self.preview_button.setVisible(is_group)
-        self.group_summary.setVisible(is_group)
+        self.well_tabs.setTabEnabled(2, is_contacts)
+        if is_contacts:
+            self.well_tabs.setCurrentIndex(2)
+        elif self.well_tabs.currentIndex() == 2:
+            self.well_tabs.setCurrentIndex(0)
+        self.preview_button.setVisible(is_group or is_contacts)
+        self.preview_button.setText(
+            "Preview contact elevations" if is_contacts
+            else "Preview grouped boreholes"
+        )
+        self.group_summary.setVisible(is_group or is_contacts)
         self.group_summary.setText("")
-        if is_wells:
+        if is_contacts:
+            self.contact_selected_only.setEnabled(layer.selectedFeatureCount() > 0)
+            self.contact_selected_only.setChecked(layer.selectedFeatureCount() > 0)
+            from . import elevation_import
+            field_names = [f.name() for f in layer.fields()]
+            choices = elevation_import.detect_fields(field_names)
+            for key, combo in self.contact_fields.items():
+                combo.clear()
+                combo.addItem("(not mapped)", None)
+                for name in field_names:
+                    combo.addItem(name, name)
+                matched = choices.get(key)
+                if matched:
+                    combo.setCurrentIndex(combo.findData(matched))
+            self.use_point_z.setChecked(not bool(choices.get("elevation_m")))
+            self.use_xy_fields.setChecked(False)
+            self._update_contact_fields()
+            self.details.setText(
+                f"{layer.featureCount()} QGIS contact records. "
+                "One well per unique ID; Z values are ELEVATIONS. "
+                "Choose the actual source horizontal CRS below before importing."
+            )
+        elif is_wells:
             names = [f.name() for f in layer.fields()]
             if is_group:
                 from . import grouped_import
@@ -500,6 +633,7 @@ class ImportFromQGISDialog(QDialog):
     def _group_selection(self):
         return {
             "mode": "grouped",
+            "source_crs": self.source_crs.crs(),
             "layer": self.selected_layer(),
             "mapping": {
                 target: combo.currentData()
@@ -513,12 +647,44 @@ class ImportFromQGISDialog(QDialog):
         }
 
     def preview_groups(self):
-        from . import grouped_import
-        data = self._group_selection()
+        from . import grouped_import, elevation_import
+        is_contacts = self.mode_combo.currentData() == "contacts"
+        data = self._contact_selection() if is_contacts else self._group_selection()
         try:
+            if is_contacts:
+                staged = elevation_import.prepare_contacts(
+                    data["layer"], data["fields"],
+                    source_crs=data["source_crs"],
+                    use_xy_fields=data["use_xy_fields"],
+                    use_geometry_z=data["use_geometry_z"],
+                    vertical_datum=data["vertical_datum"],
+                    selected_only=data["selected_only"],
+                )
+                examples = "\n".join(
+                    f"  {wid}: {count} Z contacts"
+                    for wid, count in sorted(staged["counts"].items())[:12]
+                )
+                message = (
+                    f"{staged['source_rows']} records → "
+                    f"{staged['well_count']} unique wells, "
+                    f"{staged['contact_count']} raw elevation contacts.\n"
+                    + examples
+                    + "\n\n"
+                    + "\n".join(staged["warnings"][:14])
+                )
+                self.group_summary.setText(
+                    f"Ready: {staged['well_count']} wells, "
+                    f"{staged['contact_count']} Z contacts. "
+                    f"{len(staged['ambiguous'])} repeated ambiguous horizon(s)."
+                )
+                QMessageBox.information(
+                    self, "PointZ contact import preview", message
+                )
+                return
             staged = grouped_import.prepare_groups(
                 data["layer"], data["mapping"],
                 data["interval_mapping"], data["selected_only"],
+                source_crs=data["source_crs"],
             )
             samples = sorted(staged["counts"].items())[:12]
             examples = "\n".join(
@@ -549,11 +715,14 @@ class ImportFromQGISDialog(QDialog):
         layer = self.selected_layer()
         if layer is None or not layer.isValid():
             raise ValueError("Selected QGIS layer is no longer available")
+        if self.mode_combo.currentData() == "contacts":
+            return self._contact_selection()
         if self.mode_combo.currentData() == "grouped":
             return self._group_selection()
         if self.mode_combo.currentData() == "wells":
             return dict(
                 mode="wells",
+                source_crs=self.source_crs.crs(),
                 layer=layer,
                 mapping={
                     target: combo.currentData()

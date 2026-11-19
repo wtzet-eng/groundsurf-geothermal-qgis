@@ -1,11 +1,11 @@
-# GroundSurf Geothermal 0.4.5 — Better QGIS coordinate diagnostics
+# GroundSurf Geothermal 0.4.6 — PointZ contact import from QGIS
 
 An experimental **local-first QGIS plugin** for managing wells, map layers and a
 versioned geological project database. Version 0.4 adds a **preliminary 3D
 interpolation engine** for shared geological contacts. It is not a validated
 geothermal simulator or professional structural modelling replacement.
 
-## What works in 0.4.5
+## What works in 0.4.6
 
 - Create/open a local **GeoPackage (.gpkg)** project.
 - Store well point geometries (EPSG:4326 WGS84), depths and elevations.
@@ -33,17 +33,29 @@ geothermal simulator or professional structural modelling replacement.
 - **Import from QGIS:** Copy one point per well, or **group repeated borehole
   rows** into one well and its geological intervals. Link local maps without
   duplication. Coordinate conversion and field mapping are automatic.
+- **PointZ / X-Y-Z / Strata importer** for repeated geological contact
+  elevations: one point per borehole, every Z contact saved in a dedicated
+  GroundSurf database, shown in the **Z Contacts** tab, with ambiguous
+  duplicate unit labels flagged rather than erased.
+- **Import-only CRS selector** for QGIS geometry or source X/Y fields.
+  The QGIS source layer and its original CRS are never changed.
+- Preliminary 3D models can explicitly use original Z contact elevations
+  rather than well-log depths, if a common vertical reference is supplied.
 - No remote service, account, uploaded site data or GitHub runtime required.
 
 ## Important data conventions
 
-- Imported well point coordinates must be WGS84 longitude and latitude
-  in degrees. QGIS can reproject the layer for display.
+- GroundSurf **stores** well point coordinates as EPSG:4326 longitude/latitude.
+  Existing QGIS source coordinates may use any correctly identified CRS;
+  the importer transforms them to EPSG:4326 without changing the source.
 - `total_depth_m` is **metres below ground**, positive downward.
 - `ground_elev_m` is in **metres**, using the datum that the **user must state**
   in `vertical_datum`. Do not mix elevations from different vertical datums.
 - Storing a measurement is not the same as calculating groundwater head.
   Future analysis must distinguish elevations, depths and measurement dates.
+- Imported raw contact **Z** is an elevation relative to the named source
+  vertical basis, **not** drilled depth, interval base or necessarily ground.
+  An unspecified vertical reference allows storage but blocks 3D modelling.
 - Faulted geology, heat-flow and groundwater simulations are **not**
   present in 0.4. Preliminary 3D surfaces are inferred, not observed. Do not make engineering decisions based on this preview.
 
@@ -179,6 +191,59 @@ inspection tools. Once the real layer CRS is correctly assigned,
 the importer uses QGIS's transformation to EPSG:4326 automatically.
 This applies to both single-well and grouped-interval importing.
 
+### Import geological PointZ contacts from a QGIS layer (new in 0.4.6)
+
+This is the right option for records such as:
+
+```text
+wkt_geom                         ID   X       Y       Z     Strata
+PointZ(503200 5840100 -145)       BH9  503200  5840100 -145  Base
+PointZ(503200 5840100 -112)       BH9  503200  5840100 -112  Cretaceous
+PointZ(503200 5840100 22)         BH9  503200  5840100 22    Quaternary
+```
+
+Each row represents a **geological contact at a source Z elevation**.
+The importer does **not** treat Z as a drilled depth below ground.
+
+1. Open the source `BH_logs` layer in the QGIS Layers panel.
+2. Create or open a **GroundSurf project** (its own local GeoPackage).
+3. Click **Import from QGIS** and choose that source layer.
+4. Select **Import PointZ geological contact elevations**. GroundSurf
+   should preselect this format when it sees ID/Strata/Z fields.
+5. Check the **Source X/Y CRS** picker. Select the actual coordinate
+   system of the *source numbers*, not simply the project CRS. For example,
+   X around 1,400,000 and Y around 7,000,000 are **not EPSG:4326 degrees**.
+   The correct source projection must be established from the original data;
+   do **not** assume EPSG:3857 merely because it produces plausible results.
+   The CRS choice affects this import only; the original QGIS layer is not edited.
+6. Open **PointZ / contact elevations**. Verify ID, Strata and Z mappings.
+   By default, horizontal X/Y comes from point geometry. If the source
+   attributes are authoritative, tick **Use attribute X and Y**.
+   Choose **Use PointZ geometry height** to use the geometry's third
+   coordinate rather than the Z attribute.
+7. Enter a **vertical reference or elevation datum** only if it is known
+   from the original dataset. Leaving it blank stores `UNSPECIFIED` and
+   keeps the contacts available for inspection, but stops 3D modelling.
+8. Click **Preview contact elevations**. Review recognised boreholes,
+   all source elevations and any conflicting/missing unit labels.
+9. Confirm. GroundSurf now displays unique wells in **Wells** and all
+   contact elevations in **Z Contacts** within the plugin dock.
+10. Optionally choose **3D Models → Imported contact Z elevations** and
+    create a preliminary model. This requires at least three spatially
+    separate, unambiguous wells and a common user-declared vertical basis.
+    The model retains source provenance and explicitly excludes ambiguous
+    well/unit combinations.
+
+In the synthetic 10-borehole test example, **50 rows** map to **10 distinct
+well records and 50 stored Z contacts**. BH8 has **two different
+Cretaceous elevations** and **no Base contact**. Both records are
+preserved and flagged; BH8 is excluded from any preliminary model that
+requires a single Cretaceous contact. No contact value is fabricated.
+
+Source Z elevations remain independent from well-log depth intervals.
+The uppermost observed contact is not assumed to be terrain, ground
+elevation or completed well depth.
+
 ### CSV columns
 
 Mandatory: `well_id,name,latitude,longitude`
@@ -297,6 +362,7 @@ QT_QPA_PLATFORM=offscreen PYTHONPATH=. /usr/bin/python3 tools/smoke_v04.py
 QT_QPA_PLATFORM=offscreen PYTHONPATH=. /usr/bin/python3 tools/smoke_qgis_import_v042.py
 QT_QPA_PLATFORM=offscreen PYTHONPATH=. /usr/bin/python3 tools/smoke_grouped_v044.py
 QT_QPA_PLATFORM=offscreen PYTHONPATH=. /usr/bin/python3 tools/smoke_crs_v045.py
+QT_QPA_PLATFORM=offscreen PYTHONPATH=. /usr/bin/python3 tools/smoke_pointz_v046.py
 python3 tools/build_zip.py
 ```
 
@@ -321,6 +387,10 @@ QGIS runtime compatibility beyond the tested installation is not guaranteed.
 - `groundsurf_geothermal/qgis_import.py` — live QGIS layer import and mapping UI.
 - `groundsurf_geothermal/grouped_import.py` — grouped well/interval validation
   and import with rollback if metadata writing fails.
+- `groundsurf_geothermal/elevation_contacts.py` — raw elevation Z store.
+- `groundsurf_geothermal/elevation_import.py` — PointZ/XYZ input validation.
+- `groundsurf_geothermal/contact_ui.py` — in-plugin Z Contacts table.
+- `groundsurf_geothermal/contact_adapter.py` — Z-based 3D surface input.
 - `docs/ARCHITECTURE.md` — extensible module boundaries.
 
 **Local geological data and large files do not belong in GitHub.** Keep

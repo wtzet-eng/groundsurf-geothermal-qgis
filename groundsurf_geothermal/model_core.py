@@ -123,7 +123,7 @@ def idw(x,y, samples, power=2):
 
 def build_mesh(wells, horizon_names, subdivisions=10):
     if not 2 <= len(horizon_names) <= 16:
-        raise ValueError("Model requires ground surface and 1–15 contacts")
+        raise ValueError("Model requires 2–16 ordered elevation surfaces")
     subdivisions=int(subdivisions)
     if not 2 <= subdivisions <= MAX_SUBDIV:
         raise ValueError(f"Subdivisions must be 2–{MAX_SUBDIV}")
@@ -292,7 +292,7 @@ def export_model(mesh, folder, name, epsg, datum, wells, warnings=()):
             '<vtkMultiBlockDataSet>\n'+blocks+'\n'
             '</vtkMultiBlockDataSet>\n</VTKFile>\n',encoding="utf-8")
         manifest={
-            "application":"GroundSurf Geothermal", "version":"0.4.5",
+            "application":"GroundSurf Geothermal", "version":"0.4.6",
             "name":str(name), "created_utc":datetime.now(timezone.utc).isoformat(),
             "method":METHOD, "crs":epsg, "vertical_datum":datum,
             "horizons":mesh["horizons"], "subdivisions":mesh["subdivisions"],
