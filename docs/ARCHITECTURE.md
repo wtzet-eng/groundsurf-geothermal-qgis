@@ -1,4 +1,4 @@
-# GroundSurf Geothermal architecture — v0.4.4
+# GroundSurf Geothermal architecture — v0.4.6
 
 ## Stable boundaries
 
@@ -18,7 +18,8 @@ local project store: one GeoPackage
        |-- gs_maps: legacy v1 catalogue kept for compatibility
        |-- gs_sections: named WGS84 polylines + section corridor widths
        |-- gs_section_picks: interpreted contact overrides by well/formation
-       '-- gs_model_runs: independent, source-tracked local 3D model runs
+       |-- gs_model_runs: independent, source-tracked local 3D model runs
+       '-- gs_elevation_contacts: observed raw Z, datum and provenance
        |
        +-- future separate modelling-core process / versioned API
                  |-- geometry modelling
@@ -130,3 +131,31 @@ rollback failures are explicitly reported for manual review.
 Only QGIS point layers with attribute rows are accepted in this initial
 version. Importing a separate nonspatial AGS or relational borehole log
 table is a different adapter to be implemented later.
+
+
+## Source PointZ contact elevations (0.4.6)
+
+Unlike the existing `gs_intervals` table, `gs_elevation_contacts`
+stores imported Z heights and labels from an original 3D point survey.
+Every observation keeps its borehole identity, source Z, unit/strata
+name, original X/Y/CRS, source QGIS feature ID and named vertical basis.
+Source features are copied into the GroundSurf GeoPackage without editing
+existing QGIS layer geometry or metadata.
+
+The importer presents QGIS's native CRS selection widget so the **user**
+may explicitly choose a source X/Y coordinate system independent of what
+was assigned to the original QGIS layer. No coordinate system is inferred
+automatically, and a source with projected XY values incorrectly tagged
+EPSG:4326 is rejected unless a valid CRS is explicitly supplied.
+
+The Z Contacts tab displays the saved records in the GroundSurf dock.
+Unspecified source vertical datum is retained as `UNSPECIFIED`; the
+3D contact-modelling adapter refuses it until a genuine source basis is
+declared. Disagreeing Z for the same well/unit is preserved as two source
+observations and the ambiguous well is excluded from preliminary models.
+No top contact is called "ground" without surveyed evidence.
+
+All generated models retain provenance, warn about conceptual IDW
+interpolation, and cannot be interpreted as faulted geology or thermal flow
+solutions without independent validation. Contact Z and borehole interval
+depth modes remain separate.

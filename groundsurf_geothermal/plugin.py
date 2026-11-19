@@ -18,7 +18,8 @@ from . import db, storage
 from .well_manager import WellManagerMixin
 from .section_ui import SectionToolsMixin
 from .model_ui import ModelToolsMixin
-from . import sections, models
+from .contact_ui import ContactToolsMixin
+from . import sections, models, elevation_contacts, elevation_import
 from .qgis_import import ImportFromQGISDialog, file_backed_map, import_wells
 from . import grouped_import
 
@@ -60,7 +61,8 @@ class GroundSurfGeothermalPlugin:
             self.dock = None
 
 
-class GeothermalDock(ModelToolsMixin, SectionToolsMixin, WellManagerMixin, QDockWidget):
+class GeothermalDock(ContactToolsMixin, ModelToolsMixin,
+                     SectionToolsMixin, WellManagerMixin, QDockWidget):
     def __init__(self, iface, parent=None):
         super().__init__("GroundSurf Geothermal", parent)
         self.iface = iface
@@ -138,6 +140,7 @@ class GeothermalDock(ModelToolsMixin, SectionToolsMixin, WellManagerMixin, QDock
         self.maps_table.setHorizontalHeaderLabels(["Layer", "Type", "Source"])
         self.maps_table.setEditTriggers(QTableWidget.EditTrigger.NoEditTriggers)
         tabs.addTab(self.maps_table, "Maps")
+        self.setup_contact_tab(tabs)
         self.setup_well_manager(outer, tabs)
         self.setup_section_tools(tabs)
         self.setup_model_tools(tabs)
@@ -145,7 +148,7 @@ class GeothermalDock(ModelToolsMixin, SectionToolsMixin, WellManagerMixin, QDock
         self.info = QTextEdit()
         self.info.setReadOnly(True)
         self.info.setPlainText(
-            "GroundSurf Geothermal 0.4.2\n\n"
+            "GroundSurf Geothermal 0.4.6\n\n"
             "Local GeoPackage projects and WGS84 well locations.\n"
             "Depths: metres, positive downward.\n"
             "Elevations: metres, datum supplied by user.\n\n"
@@ -294,6 +297,9 @@ class GeothermalDock(ModelToolsMixin, SectionToolsMixin, WellManagerMixin, QDock
 
         backup = sections.ensure_schema(path, backup_existing=True)
         model_backup = models.ensure_schema(path, backup_existing=True)
+        contact_backup = elevation_contacts.ensure_schema(
+            path, backup_existing=True
+        )
         if self._section_window is not None:
             self._section_window.close()
             self._section_window = None
@@ -333,7 +339,7 @@ class GeothermalDock(ModelToolsMixin, SectionToolsMixin, WellManagerMixin, QDock
             except Exception:
                 missing += 1
         self.refresh()
-        if backup or model_backup:
+        if backup or model_backup or contact_backup:
             self.status.setText(
                 "New modelling tables installed; database backups saved locally."
             )
@@ -425,6 +431,7 @@ class GeothermalDock(ModelToolsMixin, SectionToolsMixin, WellManagerMixin, QDock
                     self.well_layer,
                     selection["mapping"],
                     selected_only=selection["selected_only"],
+                    source_crs=selection.get("source_crs"),
                 )
                 self.refresh()
                 self.tabs.setCurrentIndex(0)
@@ -438,6 +445,7 @@ class GeothermalDock(ModelToolsMixin, SectionToolsMixin, WellManagerMixin, QDock
                     selection["mapping"],
                     selection["interval_mapping"],
                     selection["selected_only"],
+                    source_crs=selection.get("source_crs"),
                 )
                 warnings = "\n".join(staged["warnings"])
                 prompt = (
@@ -467,6 +475,48 @@ class GeothermalDock(ModelToolsMixin, SectionToolsMixin, WellManagerMixin, QDock
                     f"and {interval_count} log intervals from "
                     f"{staged['source_rows']} source records. "
                     "Original QGIS layer unchanged."
+                )
+            elif selection["mode"] == "contacts":
+                staged = elevation_import.prepare_contacts(
+                    layer, selection["fields"],
+                    source_crs=selection["source_crs"],
+                    use_xy_fields=selection["use_xy_fields"],
+                    use_geometry_z=selection["use_geometry_z"],
+                    vertical_datum=selection["vertical_datum"],
+                    selected_only=selection["selected_only"],
+                )
+                warnings = "\n".join(staged["warnings"][:10])
+                prompt = (
+                    f"Copy {staged['source_rows']} geological Z records as "
+                    f"{staged['well_count']} GroundSurf boreholes and "
+                    f"{staged['contact_count']} contact elevations?\n\n"
+                    f"Horizontal source CRS: {staged['source_crs']}\n"
+                    f"Vertical elevation basis: {staged['vertical_datum']}\n\n"
+                    "Z is retained as a raw contact ELEVATION, not converted "
+                    "to depth below ground. Existing QGIS layers stay unchanged."
+                )
+                if warnings:
+                    prompt += "\n\nData issues / cautions:\n" + warnings
+                if QMessageBox.question(
+                    self, "Confirm 3D contact import", prompt,
+                    QMessageBox.StandardButton.Yes
+                    | QMessageBox.StandardButton.No,
+                    QMessageBox.StandardButton.No,
+                ) != QMessageBox.StandardButton.Yes:
+                    return
+                count, contacts = elevation_import.import_contacts(
+                    self.path, self.well_layer, staged
+                )
+                self.refresh()
+                self.model_source.setCurrentIndex(
+                    self.model_source.findData("z_contacts")
+                )
+                self.tabs.setCurrentWidget(self.contact_tab)
+                self.status.setText(
+                    f"GroundSurf imported {count} boreholes and {contacts} "
+                    f"Z contact elevations. Open Z Contacts to review. "
+                    f"{len(staged['ambiguous'])} ambiguous duplicate unit(s) "
+                    "preserved for review."
                 )
             else:
                 file_path, source_layer, kind = file_backed_map(layer)
@@ -636,6 +686,7 @@ class GeothermalDock(ModelToolsMixin, SectionToolsMixin, WellManagerMixin, QDock
         self.tree.clear()
         well_root = QTreeWidgetItem(self.tree, ["Wells"])
         map_root = QTreeWidgetItem(self.tree, ["Maps"])
+        QTreeWidgetItem(self.tree, ["Z Contacts · geological elevations"])
         QTreeWidgetItem(self.tree, ["3D Models · preliminary"])
         self.wells_table.setRowCount(0)
         self.maps_table.setRowCount(0)
@@ -644,6 +695,7 @@ class GeothermalDock(ModelToolsMixin, SectionToolsMixin, WellManagerMixin, QDock
             self.refresh_well_details()
             self.refresh_sections()
             self.refresh_models()
+            self.refresh_contacts()
             return
         for well in self.well_layer.getFeatures():
             code = str(well["well_id"])
@@ -673,6 +725,7 @@ class GeothermalDock(ModelToolsMixin, SectionToolsMixin, WellManagerMixin, QDock
         self.refresh_well_details()
         self.refresh_sections()
         self.refresh_models()
+        self.refresh_contacts()
 
     def _tree_selected(self, item, column):
         self.status.setText("Selected: " + item.text(0))

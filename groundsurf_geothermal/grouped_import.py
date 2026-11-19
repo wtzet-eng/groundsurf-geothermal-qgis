@@ -98,7 +98,8 @@ def _consistent(original, incoming, attribute, well_id):
     return original
 
 
-def prepare_groups(layer, mapping, interval_mapping=None, selected_only=False):
+def prepare_groups(layer, mapping, interval_mapping=None, selected_only=False,
+                   source_crs=None):
     """Return staged wells, intervals and data-validation summary.
 
     One source row normally represents one lithological interval; multiple
@@ -107,8 +108,8 @@ def prepare_groups(layer, mapping, interval_mapping=None, selected_only=False):
     """
     if not qgis_import.is_point_layer(layer):
         raise ValueError("Grouped borehole import requires a QGIS point layer")
-    if not layer.crs().isValid():
-        raise ValueError("Select a valid CRS for the source well layer")
+    if not (source_crs or layer.crs()).isValid():
+        raise ValueError("Select a valid source CRS for the well layer")
     known = {field.name() for field in layer.fields()}
     mapping = mapping or {}
     interval_mapping = interval_mapping or {}
@@ -130,7 +131,7 @@ def prepare_groups(layer, mapping, interval_mapping=None, selected_only=False):
         raise ValueError("No selected features exist in this QGIS layer")
     features = layer.getSelectedFeatures() if selected_only else layer.getFeatures()
     transform = QgsCoordinateTransform(
-        layer.crs(), QgsCoordinateReferenceSystem("EPSG:4326"),
+        source_crs or layer.crs(), QgsCoordinateReferenceSystem("EPSG:4326"),
         QgsProject.instance(),
     )
     unique = OrderedDict()
@@ -150,7 +151,9 @@ def prepare_groups(layer, mapping, interval_mapping=None, selected_only=False):
             well_id = raw["well_id"]
             if not well_id:
                 raise ValueError("Missing borehole ID")
-            coords = qgis_import.checked_wgs84_point(feature, layer, transform)
+            coords = qgis_import.checked_wgs84_point(
+                feature, layer, transform, source_crs=source_crs
+            )
             has_name = bool(raw["name"])
             raw["name"] = raw["name"] or well_id
             raw["longitude"], raw["latitude"] = coords

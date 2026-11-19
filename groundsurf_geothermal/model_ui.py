@@ -8,11 +8,11 @@ import uuid
 from qgis.PyQt.QtCore import Qt, QUrl, QProcess, QStandardPaths
 from qgis.PyQt.QtGui import QDesktopServices
 from qgis.PyQt.QtWidgets import (
-    QFileDialog, QHBoxLayout, QInputDialog, QLabel,
+    QComboBox, QFileDialog, QHBoxLayout, QInputDialog, QLabel,
     QMessageBox, QPushButton, QTableWidget, QTableWidgetItem,
     QVBoxLayout, QWidget,
 )
-from . import model_adapter, model_core, models
+from . import model_adapter, contact_adapter, model_core, models
 
 
 class ModelToolsMixin:
@@ -29,6 +29,23 @@ class ModelToolsMixin:
         )
         explanation.setWordWrap(True)
         layout.addWidget(explanation)
+        layout.addWidget(QLabel("Choose the data used to build the 3D model:"))
+        self.model_source = QComboBox()
+        self.model_source.addItem(
+            "Well-log depths (ground elevation + intervals)", "well_logs"
+        )
+        self.model_source.addItem(
+            "Imported contact Z elevations (source vertical datum)", "z_contacts"
+        )
+        layout.addWidget(self.model_source)
+        model_note = QLabel(
+            "Contact Z mode uses actual geological elevation horizons; it "
+            "does not interpret contact Z as a drilling depth or assume "
+            "the uppermost horizon is the ground surface. Ambiguous "
+            "repeated horizon heights are excluded, not guessed."
+        )
+        model_note.setWordWrap(True)
+        layout.addWidget(model_note)
         buttons=QHBoxLayout()
         for text,action in (
             ("Build model",self.build_model),
@@ -79,7 +96,14 @@ class ModelToolsMixin:
         if not self._require_project():
             return
         try:
-            constraints=model_adapter.gather_wells(self.path,self.well_layer)
+            if self.model_source.currentData() == "z_contacts":
+                constraints=contact_adapter.gather_contacts(
+                    self.path, self.well_layer
+                )
+            else:
+                constraints=model_adapter.gather_wells(
+                    self.path,self.well_layer
+                )
         except Exception as exc:
             self._error("Cannot prepare 3D model",exc)
             return
@@ -109,13 +133,16 @@ class ModelToolsMixin:
         summary=(
             f"Create a preliminary 3D geological model?\n\n"
             f"Contributing wells: {len(constraints['samples'])}\n"
+            f"Source: {self.model_source.currentText()}\n"
             f"Shared horizons: {', '.join(constraints['horizons'])}\n"
             f"Horizontal reference: {constraints['epsg']}\n"
             f"Vertical datum: {constraints['datum']}\n"
             f"Method: {method}\n"
             f"Output: {directory}\n\n"
-            "Only conceptual contacts between wells are modelled. "
-            "No predictive geothermal flow or engineering validation."
+            "Contact elevations and well-log depths are separate evidence "
+            "types. Only conceptual horizons within the well footprint are "
+            "modelled. No fault surfaces, geothermal flow or independent "
+            "vertical-datum verification. Review imported ambiguities."
         )
         if QMessageBox.question(
             self,"Confirm 3D modelling",summary,
@@ -138,6 +165,7 @@ class ModelToolsMixin:
                 "datum":constraints["datum"],
                 "subdivisions":resolution,
                 "method":method,
+                "source_type":self.model_source.currentData(),
             }
             source_hash=hashlib.sha256(
                 json.dumps(provenance,sort_keys=True).encode("utf-8")
