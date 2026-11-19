@@ -7,8 +7,7 @@ QGIS features are read only. All inputs are validated before any copy.
 import math
 from collections import OrderedDict
 from qgis.core import (
-    QgsCoordinateReferenceSystem, QgsCoordinateTransform, QgsGeometry,
-    QgsProject,
+    QgsCoordinateReferenceSystem, QgsCoordinateTransform, QgsProject,
 )
 from . import db, qgis_import, storage
 
@@ -78,17 +77,6 @@ def _distance_metres(a, b):
         + math.cos(lat1)*math.cos(lat2)*math.sin((lon2-lon1)/2)**2
     )
     return 2*6371008.8*math.asin(min(1., math.sqrt(max(0., angle))))
-
-
-def _point(feature, transform):
-    geom = QgsGeometry(feature.geometry())
-    if geom.isEmpty():
-        raise ValueError("Missing point geometry")
-    if geom.isMultipart() and len(geom.asMultiPoint()) != 1:
-        raise ValueError("Multipoint feature must contain exactly one location")
-    geom.transform(transform)
-    point = geom.asMultiPoint()[0] if geom.isMultipart() else geom.asPoint()
-    return (point.x(), point.y())
 
 
 def _consistent(original, incoming, attribute, well_id):
@@ -162,7 +150,7 @@ def prepare_groups(layer, mapping, interval_mapping=None, selected_only=False):
             well_id = raw["well_id"]
             if not well_id:
                 raise ValueError("Missing borehole ID")
-            coords = _point(feature, transform)
+            coords = qgis_import.checked_wgs84_point(feature, layer, transform)
             has_name = bool(raw["name"])
             raw["name"] = raw["name"] or well_id
             raw["longitude"], raw["latitude"] = coords

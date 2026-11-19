@@ -10,6 +10,7 @@ No network, data alteration to input layers, or external Python packages.
 """
 from pathlib import Path
 import re
+import math
 
 from qgis.PyQt.QtCore import Qt
 from qgis.PyQt.QtWidgets import (
@@ -116,6 +117,70 @@ def _source_value(feature, key):
     return value if value else None
 
 
+
+def checked_wgs84_point(feature, layer, transform):
+    """Return WGS84 lon/lat from *geometry* with an actionable CRS error.
+
+    Geometry coordinates are never silently swapped or guessed, because a
+    guessed CRS could place a borehole far from its real location.
+    """
+    geom = QgsGeometry(feature.geometry())
+    if geom.isEmpty():
+        raise ValueError("missing point geometry")
+    if geom.isMultipart():
+        points = geom.asMultiPoint()
+        if len(points) != 1:
+            raise ValueError("multipoint well must contain exactly one point")
+        original = points[0]
+    else:
+        original = geom.asPoint()
+
+    x, y = float(original.x()), float(original.y())
+    crs = layer.crs()
+    crs_name = crs.authid() or crs.description() or "unknown CRS"
+    context = (
+        f"Layer '{layer.name()}' declares {crs_name}; "
+        f"source geometry X={x:.6f}, Y={y:.6f}."
+    )
+    if not math.isfinite(x) or not math.isfinite(y):
+        raise ValueError(context + " Coordinates must be finite.")
+    if crs.isGeographic() and (not -180 <= x <= 180 or not -90 <= y <= 90):
+        suggestion = (
+            " X/Y may be reversed."
+            if -90 <= x <= 90 and -180 <= y <= 180
+            else " Coordinates may be projected metres incorrectly labelled "
+                 "as geographic degrees."
+        )
+        raise ValueError(
+            context + " This geographic CRS requires longitude X within "
+            "-180…180° and latitude Y within -90…90°." + suggestion
+            + " Check the source LAYER CRS in QGIS Properties → Information; "
+            "assign the real source CRS (not just the project CRS). "
+            "No boreholes were imported."
+        )
+
+    try:
+        geom.transform(transform)
+    except Exception as exc:
+        raise ValueError(
+            context + " QGIS could not transform the geometry to EPSG:4326. "
+            "Check the source layer CRS and its coordinates."
+        ) from exc
+    transformed = (
+        geom.asMultiPoint()[0] if geom.isMultipart() else geom.asPoint()
+    )
+    lon, lat = float(transformed.x()), float(transformed.y())
+    if (not math.isfinite(lon) or not math.isfinite(lat)
+            or not -180 <= lon <= 180 or not -90 <= lat <= 90):
+        raise ValueError(
+            context + f" Converted WGS84 longitude={lon:.6f}, "
+            f"latitude={lat:.6f} is invalid. "
+            "Check the source layer's coordinate reference system and "
+            "geometry X/Y values in QGIS. The importer will not guess, "
+            "swap or reassign a CRS automatically. No boreholes were imported."
+        )
+    return (lon, lat)
+
 def prepare_well_records(layer, mapping, selected_only=False):
     """Validate all features and transform geometry before any GPKG write.
 
@@ -148,18 +213,9 @@ def prepare_well_records(layer, mapping, selected_only=False):
             raise ValueError(f"Import maximum: {MAX_WELLS} well features")
         label = f"Feature {feature.id()}"
         try:
-            geometry = QgsGeometry(feature.geometry())  # never edit source geometry
-            if geometry.isEmpty():
-                raise ValueError("missing point geometry")
-            if geometry.isMultipart():
-                points = geometry.asMultiPoint()
-                if len(points) != 1:
-                    raise ValueError("multipoint well must contain exactly one point")
-            geometry.transform(to_wgs84)
-            if geometry.isMultipart():
-                transformed = geometry.asMultiPoint()[0]
-            else:
-                transformed = geometry.asPoint()
+            longitude, latitude = checked_wgs84_point(
+                feature, layer, to_wgs84
+            )
             mapped = {
                 target: _source_value(feature, mapping.get(target))
                 for target, _ in FIELD_OPTIONS
@@ -168,8 +224,8 @@ def prepare_well_records(layer, mapping, selected_only=False):
             if well_id is None:
                 raise ValueError("missing Well ID")
             mapped["name"] = mapped["name"] or well_id
-            mapped["longitude"] = transformed.x()
-            mapped["latitude"] = transformed.y()
+            mapped["longitude"] = longitude
+            mapped["latitude"] = latitude
             mapped["source"] = mapped["source"] or f"QGIS layer: {layer.name()}"
             item = db.validate_well(mapped)
         except Exception as exc:
@@ -294,9 +350,11 @@ class ImportFromQGISDialog(QDialog):
         self.selected_only = QCheckBox("Import selected features only")
         mapping_layout.addRow(self.selected_only)
         explanation = QLabel(
-            "Coordinates come from point geometry, not X/Y fields. "
-            "GroundSurf converts to WGS84 automatically. Depths and "
-            "elevations must already be in metres; vertical datum is not converted."
+            "Coordinates come from QGIS point geometry (not attribute X/Y "
+            "fields). The source layer CRS must match the stored coordinates. "
+            "GroundSurf converts valid geometry to WGS84 but never guesses "
+            "or changes a wrongly assigned CRS. Depth/elevation units and "
+            "vertical datums are not converted."
         )
         explanation.setWordWrap(True)
         mapping_layout.addRow(explanation)

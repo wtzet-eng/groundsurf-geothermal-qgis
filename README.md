@@ -1,11 +1,11 @@
-# GroundSurf Geothermal 0.4.4 — Group boreholes from QGIS layers
+# GroundSurf Geothermal 0.4.5 — Better QGIS coordinate diagnostics
 
 An experimental **local-first QGIS plugin** for managing wells, map layers and a
 versioned geological project database. Version 0.4 adds a **preliminary 3D
 interpolation engine** for shared geological contacts. It is not a validated
 geothermal simulator or professional structural modelling replacement.
 
-## What works in 0.4.4
+## What works in 0.4.5
 
 - Create/open a local **GeoPackage (.gpkg)** project.
 - Store well point geometries (EPSG:4326 WGS84), depths and elevations.
@@ -155,6 +155,30 @@ intervals, become **five wells and 30 log intervals** in GroundSurf.
   relational tables, AGS files, and well-path/deviation tables will require
   separate import adapters.
 
+### When QGIS reports an invalid latitude (new diagnostic in 0.4.5)
+
+If a source feature has a coordinate such as `X=450000, Y=5800000`
+but the layer is *declared* `EPSG:4326` (degrees), GroundSurf cannot
+safely interpret its location as longitude/latitude. It will stop and show:
+
+- the source layer name and QGIS feature ID;
+- the source layer CRS, plus raw geometry X and Y;
+- whether the values resemble projected coordinates or swapped X/Y;
+- the step required in QGIS: identify and **assign the actual source
+  LAYER CRS**, not just the QGIS project CRS, then retry.
+
+For projected layer coordinates in metres, the proper source CRS could be
+a local UTM, national grid or other engineering system. It cannot be
+determined safely from two numbers alone. GroundSurf therefore never
+auto-guesses CRS, silently swaps latitude/longitude, or modifies the
+original QGIS input layer.
+
+See QGIS **right-click layer → Properties → Information** for its CRS.
+Compare that with the geometry coordinate values shown by QGIS's feature
+inspection tools. Once the real layer CRS is correctly assigned,
+the importer uses QGIS's transformation to EPSG:4326 automatically.
+This applies to both single-well and grouped-interval importing.
+
 ### CSV columns
 
 Mandatory: `well_id,name,latitude,longitude`
@@ -272,6 +296,7 @@ QT_QPA_PLATFORM=offscreen PYTHONPATH=. /usr/bin/python3 tools/smoke_v03.py
 QT_QPA_PLATFORM=offscreen PYTHONPATH=. /usr/bin/python3 tools/smoke_v04.py
 QT_QPA_PLATFORM=offscreen PYTHONPATH=. /usr/bin/python3 tools/smoke_qgis_import_v042.py
 QT_QPA_PLATFORM=offscreen PYTHONPATH=. /usr/bin/python3 tools/smoke_grouped_v044.py
+QT_QPA_PLATFORM=offscreen PYTHONPATH=. /usr/bin/python3 tools/smoke_crs_v045.py
 python3 tools/build_zip.py
 ```
 
