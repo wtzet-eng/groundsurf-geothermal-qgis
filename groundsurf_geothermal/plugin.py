@@ -20,6 +20,7 @@ from .section_ui import SectionToolsMixin
 from .model_ui import ModelToolsMixin
 from . import sections, models
 from .qgis_import import ImportFromQGISDialog, file_backed_map, import_wells
+from . import grouped_import
 
 
 class GroundSurfGeothermalPlugin:
@@ -430,6 +431,42 @@ class GeothermalDock(ModelToolsMixin, SectionToolsMixin, WellManagerMixin, QDock
                 self.status.setText(
                     f"Copied {count} well features from QGIS layer "
                     f"'{layer.name()}'. Source layer was not modified."
+                )
+            elif selection["mode"] == "grouped":
+                staged = grouped_import.prepare_groups(
+                    layer,
+                    selection["mapping"],
+                    selection["interval_mapping"],
+                    selection["selected_only"],
+                )
+                warnings = "\n".join(staged["warnings"])
+                prompt = (
+                    f"Import {staged['source_rows']} QGIS records as "
+                    f"{staged['well_count']} boreholes with "
+                    f"{staged['interval_count']} geological intervals?\n\n"
+                    "Original QGIS layer will remain unchanged.\n"
+                    "Formation labels are copied as source labels, not "
+                    "independently verified geology."
+                )
+                if warnings:
+                    prompt += "\n\n" + warnings
+                if QMessageBox.question(
+                    self, "Confirm grouped borehole import", prompt,
+                    QMessageBox.StandardButton.Yes
+                    | QMessageBox.StandardButton.No,
+                    QMessageBox.StandardButton.No,
+                ) != QMessageBox.StandardButton.Yes:
+                    return
+                well_count, interval_count = grouped_import.import_groups(
+                    self.path, self.well_layer, staged
+                )
+                self.refresh()
+                self.tabs.setCurrentIndex(0)
+                self.status.setText(
+                    f"Imported {well_count} individual boreholes "
+                    f"and {interval_count} log intervals from "
+                    f"{staged['source_rows']} source records. "
+                    "Original QGIS layer unchanged."
                 )
             else:
                 file_path, source_layer, kind = file_backed_map(layer)
