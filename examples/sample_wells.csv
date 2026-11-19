@@ -1,0 +1,4 @@
+well_id,name,latitude,longitude,total_depth_m,ground_elev_m,vertical_datum,source,notes
+SIM-01,Synthetic observation 1,52.5000,13.3500,150,48.2,DEMO-UNDEFINED,synthetic,Not a real well
+SIM-02,Synthetic observation 2,52.5060,13.3640,220,48.6,DEMO-UNDEFINED,synthetic,Not a real well
+SIM-03,Synthetic observation 3,52.4930,13.3580,310,47.9,DEMO-UNDEFINED,synthetic,Not a real well
