@@ -14,7 +14,7 @@ import re
 from qgis.PyQt.QtCore import Qt
 from qgis.PyQt.QtWidgets import (
     QCheckBox, QComboBox, QDialog, QDialogButtonBox, QFormLayout,
-    QGroupBox, QLabel, QMessageBox, QVBoxLayout,
+    QGroupBox, QLabel, QMessageBox, QPushButton, QTabWidget, QVBoxLayout,
 )
 from qgis.core import (
     QgsCoordinateReferenceSystem, QgsCoordinateTransform, QgsGeometry,
@@ -47,8 +47,11 @@ ALIASES = {
         "ground_elev_m", "ground_elevation", "ground_level", "surface_elev",
         "surface_elevation", "elevation", "elev", "rl",
     ),
-    "vertical_datum": ("vertical_datum", "verticaldatum", "height_datum",
-                       "elevation_datum", "datum"),
+    "vertical_datum": (
+        "vertical_datum", "verticaldatum", "vdatum", "vert_datum",
+        "height_datum", "elevation_datum", "elev_datum", "datum",
+        "rl_datum", "vertical_reference",
+    ),
     "source": ("source", "data_source", "origin", "provenance"),
     "notes": ("notes", "comments", "remark", "remarks"),
 }
@@ -252,7 +255,8 @@ class ImportFromQGISDialog(QDialog):
     def __init__(self, excluded_ids=(), preferred_layer_id=None, parent=None):
         super().__init__(parent)
         self.setWindowTitle("Import from open QGIS project")
-        self.setMinimumWidth(485)
+        self.setMinimumWidth(535)
+        self.resize(560, 565)
         self.layers = eligible_layers(excluded_ids)
         layout = QVBoxLayout(self)
         intro = QLabel(
@@ -296,7 +300,34 @@ class ImportFromQGISDialog(QDialog):
         )
         explanation.setWordWrap(True)
         mapping_layout.addRow(explanation)
-        layout.addWidget(self.mapping_box)
+        self.well_tabs = QTabWidget()
+        self.well_tabs.addTab(self.mapping_box, "Well identity")
+
+        self.interval_box = QGroupBox("Optional geological interval attributes")
+        interval_layout = QFormLayout(self.interval_box)
+        self.interval_combo = {}
+        # Delayed import avoids a circular module dependency.
+        from . import grouped_import
+        for target, caption in grouped_import.INTERVAL_FIELDS:
+            combo = QComboBox()
+            self.interval_combo[target] = combo
+            interval_layout.addRow(caption, combo)
+        note = QLabel(
+            "Group records by borehole ID. Repeated positions must agree "
+            "within 5 m. Each source row can become one geological interval. "
+            "Do not confuse interval base depth with drilled total depth."
+        )
+        note.setWordWrap(True)
+        interval_layout.addRow(note)
+        self.well_tabs.addTab(self.interval_box, "Geological intervals")
+        layout.addWidget(self.well_tabs)
+
+        self.preview_button = QPushButton("Preview grouped boreholes")
+        self.preview_button.clicked.connect(self.preview_groups)
+        layout.addWidget(self.preview_button)
+        self.group_summary = QLabel("")
+        self.group_summary.setWordWrap(True)
+        layout.addWidget(self.group_summary)
 
         buttons = QDialogButtonBox(
             QDialogButtonBox.StandardButton.Ok
@@ -320,9 +351,31 @@ class ImportFromQGISDialog(QDialog):
         layer = self.selected_layer()
         self.mode_combo.blockSignals(True)
         self.mode_combo.clear()
+        grouped = False
         if layer is not None and is_point_layer(layer):
             self.mode_combo.addItem("Copy point features as GroundSurf wells", "wells")
+            self.mode_combo.addItem(
+                "Group repeated borehole rows into individual well logs", "grouped"
+            )
+            from . import grouped_import
+            mapping = grouped_import.default_group_well_mapping(
+                [field.name() for field in layer.fields()]
+            )
+            field = mapping.get("well_id")
+            if field:
+                seen = set()
+                for feature_index, feature in enumerate(layer.getFeatures()):
+                    if feature_index >= 1500:
+                        break
+                    candidate = _source_value(feature, field)
+                    if candidate in seen and candidate:
+                        grouped = True
+                        break
+                    if candidate:
+                        seen.add(candidate)
         self.mode_combo.addItem("Link existing map source (no data copied)", "map")
+        if grouped:
+            self.mode_combo.setCurrentIndex(self.mode_combo.findData("grouped"))
         self.mode_combo.blockSignals(False)
         self._update_mode()
 
@@ -332,11 +385,21 @@ class ImportFromQGISDialog(QDialog):
             self.mapping_box.setVisible(False)
             self.details.setText("No layers are open in the QGIS project.")
             return
-        is_wells = self.mode_combo.currentData() == "wells"
-        self.mapping_box.setVisible(is_wells)
+        mode = self.mode_combo.currentData()
+        is_wells = mode in ("wells", "grouped")
+        is_group = mode == "grouped"
+        self.well_tabs.setVisible(is_wells)
+        self.well_tabs.setTabEnabled(1, is_group)
+        self.preview_button.setVisible(is_group)
+        self.group_summary.setVisible(is_group)
+        self.group_summary.setText("")
         if is_wells:
             names = [f.name() for f in layer.fields()]
-            suggested = guess_mapping(names)
+            if is_group:
+                from . import grouped_import
+                suggested = grouped_import.default_group_well_mapping(names)
+            else:
+                suggested = guess_mapping(names)
             for target, _caption in FIELD_OPTIONS:
                 combo = self.mapping_combo[target]
                 combo.clear()
@@ -348,11 +411,25 @@ class ImportFromQGISDialog(QDialog):
                     combo.setCurrentIndex(combo.findData(chosen))
             self.selected_only.setEnabled(layer.selectedFeatureCount() > 0)
             self.selected_only.setChecked(layer.selectedFeatureCount() > 0)
+            if is_group:
+                from . import grouped_import
+                intervals = grouped_import.guess_interval_mapping(names)
+                for target, _caption in grouped_import.INTERVAL_FIELDS:
+                    combo = self.interval_combo[target]
+                    combo.clear()
+                    combo.addItem("(not mapped)", None)
+                    for field_name in names:
+                        combo.addItem(field_name, field_name)
+                    chosen = intervals.get(target)
+                    if chosen:
+                        combo.setCurrentIndex(combo.findData(chosen))
             self.details.setText(
                 f"{layer.featureCount()} point features, "
                 f"{layer.selectedFeatureCount()} selected. "
                 f"Source CRS: {layer.crs().authid() or 'UNDEFINED'}. "
-                "Mapped wells are COPIED; the QGIS source stays unchanged."
+                + ("Repeated IDs are grouped as individual boreholes; "
+                   if is_group else "Mapped wells are COPIED; ")
+                + "the QGIS source stays unchanged."
             )
         else:
             self.details.setText(
@@ -362,12 +439,60 @@ class ImportFromQGISDialog(QDialog):
                 "Only local file-backed maps are supported."
             )
 
+    def _group_selection(self):
+        return {
+            "mode": "grouped",
+            "layer": self.selected_layer(),
+            "mapping": {
+                target: combo.currentData()
+                for target, combo in self.mapping_combo.items()
+            },
+            "interval_mapping": {
+                target: combo.currentData()
+                for target, combo in self.interval_combo.items()
+            },
+            "selected_only": self.selected_only.isChecked(),
+        }
+
+    def preview_groups(self):
+        from . import grouped_import
+        data = self._group_selection()
+        try:
+            staged = grouped_import.prepare_groups(
+                data["layer"], data["mapping"],
+                data["interval_mapping"], data["selected_only"],
+            )
+            samples = sorted(staged["counts"].items())[:12]
+            examples = "\n".join(
+                f"  {well}: {n} interval(s)" for well, n in samples
+            )
+            if staged["well_count"] > 12:
+                examples += "\n  …"
+            message = (
+                f"{staged['source_rows']} source records → "
+                f"{staged['well_count']} unique wells, "
+                f"{staged['interval_count']} lithological intervals.\n"
+                + examples
+            )
+            if staged["warnings"]:
+                message += "\n\n" + "\n".join(staged["warnings"])
+            self.group_summary.setText(
+                f"Ready: {staged['well_count']} wells and "
+                f"{staged['interval_count']} intervals."
+            )
+            QMessageBox.information(self, "Grouped borehole preview", message)
+        except Exception as exc:
+            self.group_summary.setText("Check mapping or source records.")
+            QMessageBox.warning(self, "Grouping preview failed", str(exc))
+
     def selection(self):
         if self.result() != QDialog.DialogCode.Accepted:
             return None
         layer = self.selected_layer()
         if layer is None or not layer.isValid():
             raise ValueError("Selected QGIS layer is no longer available")
+        if self.mode_combo.currentData() == "grouped":
+            return self._group_selection()
         if self.mode_combo.currentData() == "wells":
             return dict(
                 mode="wells",

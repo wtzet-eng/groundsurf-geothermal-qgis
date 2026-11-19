@@ -1,11 +1,11 @@
-# GroundSurf Geothermal 0.4.3 — QGIS quality cleanup
+# GroundSurf Geothermal 0.4.4 — Group boreholes from QGIS layers
 
 An experimental **local-first QGIS plugin** for managing wells, map layers and a
 versioned geological project database. Version 0.4 adds a **preliminary 3D
 interpolation engine** for shared geological contacts. It is not a validated
 geothermal simulator or professional structural modelling replacement.
 
-## What works in 0.4.2
+## What works in 0.4.4
 
 - Create/open a local **GeoPackage (.gpkg)** project.
 - Store well point geometries (EPSG:4326 WGS84), depths and elevations.
@@ -30,8 +30,9 @@ geothermal simulator or professional structural modelling replacement.
   clipped to input-well triangulation (no extrapolation).
 - Versioned local 3D model catalogue with VTK/ParaView scene exports,
   manifest, provenance, vertical datum and reproducibility hash.
-- **Import from QGIS:** Copy existing point wells with automatic field mapping
-  and coordinate conversion; link existing local maps without duplication.
+- **Import from QGIS:** Copy one point per well, or **group repeated borehole
+  rows** into one well and its geological intervals. Link local maps without
+  duplication. Coordinate conversion and field mapping are automatic.
 - No remote service, account, uploaded site data or GitHub runtime required.
 
 ## Important data conventions
@@ -109,6 +110,50 @@ Linked maps are reference data, **not automatic fault surfaces or other 3D
 modelling constraints**. Real wells copied into the GroundSurf GeoPackage
 can immediately be used in well logs, section interpretation and preliminary
 3D modelling. Existing input layers are never modified by the importer.
+
+### Group repeated borehole rows into complete well logs (new in 0.4.4)
+
+Use **Import from QGIS** when your existing QGIS **point layer** has
+more than one record for the same borehole (typically one row per lithological
+interval). GroundSurf detects repeated well IDs and preselects:
+
+**Group repeated borehole rows into individual well logs**
+
+1. Choose the loaded QGIS point layer. The active QGIS layer is preselected.
+2. Check the suggested **Well identity** field mappings: borehole ID, name,
+   surveyed ground elevation, total depth, vertical datum and provenance.
+3. Open the **Geological intervals** tab. Review the proposed formation,
+   interval top and interval base fields. The values must be metres below
+   ground; interval base must be deeper than its top.
+4. Choose **Import selected features only**, or import the entire layer.
+5. Click **Preview grouped boreholes** to see how many records will become
+   individual wells and intervals. Check warnings and a sample by-well count.
+6. Confirm the import. Each unique borehole ID becomes exactly one
+   GroundSurf well. Its lithological intervals appear under **Well log**.
+7. Original QGIS rows and their geometry are never edited or deleted.
+
+Example: 30 rows representing five boreholes, each with six lithological
+intervals, become **five wells and 30 log intervals** in GroundSurf.
+
+- The importer accepts 50,000 source rows and at most 10,000 distinct wells.
+- Matching borehole IDs must have consistent ground elevations, total
+  depths, names, vertical datums and map locations (within 5 metres).
+- Overlapping intervals, reversed depths and inconsistent attributes are
+  rejected *before* the original copy is changed.
+- The attribute `Depth` alone is deliberately **not** assumed to represent
+  drilled total depth in grouped mode. Set total-depth mapping explicitly
+  if it truly refers to the completed hole depth.
+- If no drilled total depth is supplied, it remains **unknown**. The base
+  of the deepest logged interval is not silently treated as drilled depth.
+- Grouped formation labels are copied as source labels and marked for
+  geological verification; they are not independently validated stratigraphy.
+- The importer refuses existing GroundSurf well IDs rather than silently
+  replacing or merging existing logs.
+- If no interval columns are present, leave all three formation/top/base
+  fields unmapped to import grouped well locations only.
+- This first release reads QGIS **point-geometry layers**. Standalone
+  relational tables, AGS files, and well-path/deviation tables will require
+  separate import adapters.
 
 ### CSV columns
 
@@ -226,6 +271,7 @@ QT_QPA_PLATFORM=offscreen PYTHONPATH=. /usr/bin/python3 tools/smoke_v02.py
 QT_QPA_PLATFORM=offscreen PYTHONPATH=. /usr/bin/python3 tools/smoke_v03.py
 QT_QPA_PLATFORM=offscreen PYTHONPATH=. /usr/bin/python3 tools/smoke_v04.py
 QT_QPA_PLATFORM=offscreen PYTHONPATH=. /usr/bin/python3 tools/smoke_qgis_import_v042.py
+QT_QPA_PLATFORM=offscreen PYTHONPATH=. /usr/bin/python3 tools/smoke_grouped_v044.py
 python3 tools/build_zip.py
 ```
 
@@ -248,6 +294,8 @@ QGIS runtime compatibility beyond the tested installation is not guaranteed.
 - `groundsurf_geothermal/models.py` — local model catalogue and backup.
 - `groundsurf_geothermal/model_ui.py` — 3D modelling UI and ParaView launch.
 - `groundsurf_geothermal/qgis_import.py` — live QGIS layer import and mapping UI.
+- `groundsurf_geothermal/grouped_import.py` — grouped well/interval validation
+  and import with rollback if metadata writing fails.
 - `docs/ARCHITECTURE.md` — extensible module boundaries.
 
 **Local geological data and large files do not belong in GitHub.** Keep

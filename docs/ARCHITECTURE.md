@@ -1,4 +1,4 @@
-# GroundSurf Geothermal architecture — v0.4.2
+# GroundSurf Geothermal architecture — v0.4.4
 
 ## Stable boundaries
 
@@ -103,3 +103,30 @@ so relinking cannot remove an existing user-owned QGIS source.
 These registered maps remain *context layers*, not automatically structural
 geological constraints. Memory and service layers cannot be persistently
 linked until a separate source-URI preservation feature is designed.
+
+
+## Grouped borehole import from long-form QGIS point data (0.4.4)
+
+Long-form source rows are grouped by a selected borehole ID field.
+The importer first validates every row's coordinates (converted to WGS84),
+attributes, geological interval depths and repeated-well consistency.
+An automatically suggested mapping is user-editable, with a preview of
+individual well and interval counts.
+
+Repeated rows within 5 metres are treated as one well location, provided
+depth, name, elevation and vertical datum also agree. Overlapping or
+reversed intervals reject the batch. Unmapped or unknown total well depths
+are left unknown rather than being inferred from the longest log.
+Source geological unit codes are imported as provenance-marked labels.
+
+After preflight, one QGIS well-layer edit transaction copies the unique
+wells. A second, all-or-nothing SQLite transaction installs any new
+formation labels and geological intervals in the same GeoPackage. On
+the unlikely event of an interval transaction failure, the importer
+performs a compensating deletion of the freshly added wells. This two-stage
+process is **not claimed to be a single database transaction**; unrecoverable
+rollback failures are explicitly reported for manual review.
+
+Only QGIS point layers with attribute rows are accepted in this initial
+version. Importing a separate nonspatial AGS or relational borehole log
+table is a different adapter to be implemented later.
