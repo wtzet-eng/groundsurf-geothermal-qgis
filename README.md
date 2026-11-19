@@ -1,4 +1,4 @@
-# GroundSurf Geothermal 0.4.2 — Import directly from QGIS
+# GroundSurf Geothermal 0.4.3 — QGIS quality cleanup
 
 An experimental **local-first QGIS plugin** for managing wells, map layers and a
 versioned geological project database. Version 0.4 adds a **preliminary 3D
@@ -273,3 +273,9 @@ ParaView viewing. The 57 reported deprecated/unscoped Qt symbols and exec_
 calls were updated to scoped enum values and exec(), compatible with the
 tested QGIS 3.34.4/Qt5 runtime. QGIS 4/Qt6 runtime validation is still
 pending; static Qt6 scanner warnings should be rechecked after upload.
+
+## v0.4.3 quality fix
+
+Two assigned lambda expressions in the cross-section drawing panel were
+replaced by ordinary named functions to resolve Flake8 E731. Behaviour,
+visualisation and direct QGIS import workflows are unchanged.

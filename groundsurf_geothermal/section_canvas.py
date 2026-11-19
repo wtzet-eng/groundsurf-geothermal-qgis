@@ -79,8 +79,11 @@ class SectionCanvas(QWidget):
         if hi - lo < 1e-9:
             hi = lo + 1
         length = max(s["length_m"], 1)
-        x_plot = lambda chainage: left + chainage/length*(right-left)
-        y_plot = lambda vertical: self._y(vertical, bottom, top, lo, hi)
+        def x_plot(chainage):
+            return left + chainage / length * (right - left)
+
+        def y_plot(vertical):
+            return self._y(vertical, bottom, top, lo, hi)
 
         # Reference grid, common horizontal distance and vertical value axes.
         for n in range(6):
