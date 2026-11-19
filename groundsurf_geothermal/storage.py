@@ -32,7 +32,7 @@ def create_project(path):
     outcome = QgsVectorFileWriter.writeAsVectorFormatV3(
         layer, path, QgsProject.instance().transformContext(), options
     )
-    if outcome[0] != QgsVectorFileWriter.NoError:
+    if outcome[0] != QgsVectorFileWriter.WriterError.NoError:
         raise RuntimeError("Cannot create GeoPackage: " + str(outcome))
     db.bootstrap(path)
     sections.ensure_schema(path, backup_existing=False)

@@ -40,7 +40,7 @@ class SectionCanvas(QWidget):
 
     def draw(self, painter, width, height):
         s = self.scene
-        painter.setRenderHint(QPainter.Antialiasing, True)
+        painter.setRenderHint(QPainter.RenderHint.Antialiasing, True)
         background = QColor("#212121" if self.dark else "#ffffff")
         foreground = QColor("#e9eee9" if self.dark else "#25372a")
         muted = QColor("#a6b7ad" if self.dark else "#52645a")
@@ -51,7 +51,7 @@ class SectionCanvas(QWidget):
         def line(x1, y1, x2, y2, colour, thickness=1, dashed=False):
             pen = QPen(colour, thickness)
             if dashed:
-                pen.setStyle(Qt.DashLine)
+                pen.setStyle(Qt.PenStyle.DashLine)
             painter.setPen(pen)
             painter.drawLine(QPointF(x1,y1), QPointF(x2,y2))
 
@@ -173,8 +173,8 @@ class SectionCanvas(QWidget):
         label(28, 91, note[:195], QColor("#e4ad83" if self.dark else "#865221"), 8)
 
     def save_png(self, path):
-        image = QImage(1800, 950, QImage.Format_ARGB32)
-        image.fill(Qt.transparent)
+        image = QImage(1800, 950, QImage.Format.Format_ARGB32)
+        image.fill(Qt.GlobalColor.transparent)
         painter = QPainter(image)
         try:
             self.draw(painter, image.width(), image.height())

@@ -1,11 +1,11 @@
-# GroundSurf Geothermal 0.4.0 — Preliminary 3D Developer Preview
+# GroundSurf Geothermal 0.4.1 — Security and Qt6 compatibility maintenance
 
 An experimental **local-first QGIS plugin** for managing wells, map layers and a
 versioned geological project database. Version 0.4 adds a **preliminary 3D
 interpolation engine** for shared geological contacts. It is not a validated
 geothermal simulator or professional structural modelling replacement.
 
-## What works in 0.4
+## What works in 0.4.1
 
 - Create/open a local **GeoPackage (.gpkg)** project.
 - Store well point geometries (EPSG:4326 WGS84), depths and elevations.
@@ -228,3 +228,13 @@ development; publication through the official QGIS plugin catalogue requires
 publicly accessible source and other review conditions.
 
 Copyright 2026 GroundSurf contributors. Experimental, no warranty.
+
+## Security and Qt6 maintenance (0.4.1)
+
+The QGIS plugin security scan identified three patterns in 0.4.0. All were
+replaced in 0.4.1: literal SQL DELETE statements, safely escaped XML output
+without the xml.sax helper, and the Qt-native QProcess launcher for optional
+ParaView viewing. The 57 reported deprecated/unscoped Qt symbols and exec_
+calls were updated to scoped enum values and exec(), compatible with the
+tested QGIS 3.34.4/Qt5 runtime. QGIS 4/Qt6 runtime validation is still
+pending; static Qt6 scanner warnings should be rechecked after upload.

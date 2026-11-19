@@ -39,7 +39,7 @@ class GroundSurfGeothermalPlugin:
     def open_dock(self):
         if self.dock is None:
             self.dock = GeothermalDock(self.iface, self.iface.mainWindow())
-            self.iface.addDockWidget(Qt.RightDockWidgetArea, self.dock)
+            self.iface.addDockWidget(Qt.DockWidgetArea.RightDockWidgetArea, self.dock)
         self.dock.show()
         self.dock.raise_()
 
@@ -71,7 +71,7 @@ class GeothermalDock(ModelToolsMixin, SectionToolsMixin, WellManagerMixin, QDock
         self.theme = self.settings.value("theme", "dark")
         self.setObjectName("GroundSurfGeothermalDock")
         self.setMinimumWidth(360)
-        self.setAllowedAreas(Qt.LeftDockWidgetArea | Qt.RightDockWidgetArea)
+        self.setAllowedAreas(Qt.DockWidgetArea.LeftDockWidgetArea | Qt.DockWidgetArea.RightDockWidgetArea)
         self._build_ui()
         self._set_theme()
         last = self.settings.value("last_project", "")
@@ -114,7 +114,7 @@ class GeothermalDock(ModelToolsMixin, SectionToolsMixin, WellManagerMixin, QDock
         self.project_label.setWordWrap(True)
         outer.addWidget(self.project_label)
 
-        splitter = QSplitter(Qt.Vertical)
+        splitter = QSplitter(Qt.Orientation.Vertical)
         self.tree = QTreeWidget()
         self.tree.setHeaderLabel("PROJECT EXPLORER")
         self.tree.itemClicked.connect(self._tree_selected)
@@ -126,14 +126,14 @@ class GeothermalDock(ModelToolsMixin, SectionToolsMixin, WellManagerMixin, QDock
         self.wells_table.setHorizontalHeaderLabels(
             ["Well ID", "Name", "Depth (m)", "Elevation (m)"]
         )
-        self.wells_table.setSelectionBehavior(QTableWidget.SelectRows)
-        self.wells_table.setEditTriggers(QTableWidget.NoEditTriggers)
+        self.wells_table.setSelectionBehavior(QTableWidget.SelectionBehavior.SelectRows)
+        self.wells_table.setEditTriggers(QTableWidget.EditTrigger.NoEditTriggers)
         self.wells_table.cellClicked.connect(self._zoom_well)
         tabs.addTab(self.wells_table, "Wells")
 
         self.maps_table = QTableWidget(0, 3)
         self.maps_table.setHorizontalHeaderLabels(["Layer", "Type", "Source"])
-        self.maps_table.setEditTriggers(QTableWidget.NoEditTriggers)
+        self.maps_table.setEditTriggers(QTableWidget.EditTrigger.NoEditTriggers)
         tabs.addTab(self.maps_table, "Maps")
         self.setup_well_manager(outer, tabs)
         self.setup_section_tools(tabs)
@@ -157,7 +157,7 @@ class GeothermalDock(ModelToolsMixin, SectionToolsMixin, WellManagerMixin, QDock
         contact_header.setWordWrap(True)
         help_layout.addWidget(contact_header)
         email_label = QLabel("Feedback: tzuk.ls@outlook.com")
-        email_label.setTextInteractionFlags(Qt.TextSelectableByMouse)
+        email_label.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByMouse)
         help_layout.addWidget(email_label)
         contact = QPushButton("Email feedback")
         contact.clicked.connect(
@@ -281,9 +281,9 @@ class GeothermalDock(ModelToolsMixin, SectionToolsMixin, WellManagerMixin, QDock
                 "This is a version 0.1 project. Upgrade to v0.2?\n"
                 "An automatic SQLite backup is created beside the GeoPackage.\n"
                 "Cancel to leave the original project untouched.",
-                QMessageBox.Yes | QMessageBox.No, QMessageBox.No
+                QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No, QMessageBox.StandardButton.No
             )
-            if answer != QMessageBox.Yes:
+            if answer != QMessageBox.StandardButton.Yes:
                 return
             db.migrate_v1(path)
         elif version != db.SCHEMA_VERSION:
@@ -361,11 +361,11 @@ class GeothermalDock(ModelToolsMixin, SectionToolsMixin, WellManagerMixin, QDock
             entry = QLineEdit()
             form.addRow(caption, entry)
             widgets[key] = entry
-        buttons = QDialogButtonBox(QDialogButtonBox.Ok | QDialogButtonBox.Cancel)
+        buttons = QDialogButtonBox(QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel)
         buttons.accepted.connect(dialog.accept)
         buttons.rejected.connect(dialog.reject)
         form.addRow(buttons)
-        if dialog.exec_() != QDialog.Accepted:
+        if dialog.exec() != QDialog.DialogCode.Accepted:
             return
         try:
             well = db.validate_well({k: v.text() for k, v in widgets.items()})
@@ -473,7 +473,7 @@ class GeothermalDock(ModelToolsMixin, SectionToolsMixin, WellManagerMixin, QDock
                 self, "Select map", "Select a map row before choosing its replacement."
             )
             return
-        record_id = self.maps_table.item(selected, 0).data(Qt.UserRole)
+        record_id = self.maps_table.item(selected, 0).data(Qt.ItemDataRole.UserRole)
         rows = [r for r in db.maps(self.path) if r[0] == record_id]
         if not rows:
             return
@@ -542,7 +542,7 @@ class GeothermalDock(ModelToolsMixin, SectionToolsMixin, WellManagerMixin, QDock
             row = self.maps_table.rowCount()
             self.maps_table.insertRow(row)
             item = QTableWidgetItem(layer_name)
-            item.setData(Qt.UserRole, identifier)
+            item.setData(Qt.ItemDataRole.UserRole, identifier)
             self.maps_table.setItem(row, 0, item)
             self.maps_table.setItem(row, 1, QTableWidgetItem(kind))
             self.maps_table.setItem(row, 2, QTableWidgetItem(state))

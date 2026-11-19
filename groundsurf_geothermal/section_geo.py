@@ -62,7 +62,7 @@ def selected_line_vertices(iface):
         raise ValueError("Select exactly one line feature in the QGIS map")
     feat = active.selectedFeatures()[0]
     geometry = feat.geometry()
-    if geometry.isEmpty() or QgsWkbTypes.geometryType(geometry.wkbType()) != QgsWkbTypes.LineGeometry:
+    if geometry.isEmpty() or QgsWkbTypes.geometryType(geometry.wkbType()) != QgsWkbTypes.GeometryType.LineGeometry:
         raise ValueError("Selected geometry is not a line")
     if geometry.isMultipart():
         parts = geometry.asMultiPolyline()

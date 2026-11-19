@@ -11,8 +11,8 @@ from . import db
 def _table(headers):
     widget = QTableWidget(0, len(headers))
     widget.setHorizontalHeaderLabels(headers)
-    widget.setEditTriggers(QTableWidget.NoEditTriggers)
-    widget.setSelectionBehavior(QTableWidget.SelectRows)
+    widget.setEditTriggers(QTableWidget.EditTrigger.NoEditTriggers)
+    widget.setSelectionBehavior(QTableWidget.SelectionBehavior.SelectRows)
     widget.setAlternatingRowColors(True)
     return widget
 
@@ -120,7 +120,7 @@ class WellManagerMixin:
             for col, val in enumerate(values):
                 item = QTableWidgetItem("" if val is None else str(val))
                 if col == 0:
-                    item.setData(Qt.UserRole, record_id)
+                    item.setData(Qt.ItemDataRole.UserRole, record_id)
                 table.setItem(row_num, col, item)
         table.resizeColumnsToContents()
 
@@ -142,11 +142,11 @@ class WellManagerMixin:
                 input_widget = QLineEdit(str(default or ""))
             controls[key] = input_widget
             layout.addRow(caption, input_widget)
-        buttons = QDialogButtonBox(QDialogButtonBox.Ok | QDialogButtonBox.Cancel)
+        buttons = QDialogButtonBox(QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel)
         buttons.accepted.connect(dialog.accept)
         buttons.rejected.connect(dialog.reject)
         layout.addRow(buttons)
-        if dialog.exec_() != QDialog.Accepted:
+        if dialog.exec() != QDialog.DialogCode.Accepted:
             return None
         return {
             key: widget.currentText() if isinstance(widget, QComboBox)
@@ -279,12 +279,12 @@ class WellManagerMixin:
         if row < 0 or not table.item(row, 0):
             QMessageBox.information(self, "Select record", "Select a row to delete.")
             return
-        record_id = table.item(row, 0).data(Qt.UserRole)
+        record_id = table.item(row, 0).data(Qt.ItemDataRole.UserRole)
         answer = QMessageBox.question(
             self, "Delete record?", f"Delete selected {kind} record for well {well}?",
-            QMessageBox.Yes | QMessageBox.No, QMessageBox.No
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No, QMessageBox.StandardButton.No
         )
-        if answer != QMessageBox.Yes:
+        if answer != QMessageBox.StandardButton.Yes:
             return
         try:
             db.delete_well_record(self.path, kind, record_id, well)

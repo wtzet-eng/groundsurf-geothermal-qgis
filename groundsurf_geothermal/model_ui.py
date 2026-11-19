@@ -3,11 +3,9 @@ from datetime import datetime, timezone
 import hashlib
 import json
 from pathlib import Path
-import shutil
-import subprocess
 import uuid
 
-from qgis.PyQt.QtCore import Qt, QUrl
+from qgis.PyQt.QtCore import Qt, QUrl, QProcess, QStandardPaths
 from qgis.PyQt.QtGui import QDesktopServices
 from qgis.PyQt.QtWidgets import (
     QFileDialog, QHBoxLayout, QInputDialog, QLabel,
@@ -44,8 +42,8 @@ class ModelToolsMixin:
         self.model_table.setHorizontalHeaderLabels(
             ["Model", "Built (UTC)", "Wells"]
         )
-        self.model_table.setSelectionBehavior(QTableWidget.SelectRows)
-        self.model_table.setEditTriggers(QTableWidget.NoEditTriggers)
+        self.model_table.setSelectionBehavior(QTableWidget.SelectionBehavior.SelectRows)
+        self.model_table.setEditTriggers(QTableWidget.EditTrigger.NoEditTriggers)
         layout.addWidget(self.model_table,1)
         folder_button=QPushButton("Open selected model folder")
         folder_button.clicked.connect(self.open_model_folder)
@@ -73,7 +71,7 @@ class ModelToolsMixin:
             for col,value in enumerate((record[1],record[2],record[7])):
                 item=QTableWidgetItem(str(value))
                 if col==0:
-                    item.setData(Qt.UserRole,record[0])
+                    item.setData(Qt.ItemDataRole.UserRole,record[0])
                 self.model_table.setItem(row,col,item)
         self.model_table.resizeColumnsToContents()
 
@@ -121,8 +119,8 @@ class ModelToolsMixin:
         )
         if QMessageBox.question(
             self,"Confirm 3D modelling",summary,
-            QMessageBox.Yes|QMessageBox.No,QMessageBox.No
-        )!=QMessageBox.Yes:
+            QMessageBox.StandardButton.Yes|QMessageBox.StandardButton.No,QMessageBox.StandardButton.No
+        )!=QMessageBox.StandardButton.Yes:
             return
         try:
             mesh=model_core.build_mesh(
@@ -176,7 +174,7 @@ class ModelToolsMixin:
         if row<0 or self.model_table.item(row,0) is None:
             QMessageBox.information(self,"Select model","Select a saved model row.")
             return None
-        model_id=self.model_table.item(row,0).data(Qt.UserRole)
+        model_id=self.model_table.item(row,0).data(Qt.ItemDataRole.UserRole)
         match=next(
             (r for r in models.list_models(self.path) if r[0]==model_id),
             None
@@ -202,23 +200,22 @@ class ModelToolsMixin:
         folder=self._selected_model()
         if not folder:
             return
-        exe=shutil.which("paraview")
-        if not exe:
+        # Open an explicit, selected local model only via the Qt process API.
+        # No shell, command interpolation, or network operation.
+        executable = QStandardPaths.findExecutable("paraview")
+        if not executable:
             QMessageBox.information(
-                self,"ParaView not found",
-                "Install ParaView or open model.vtm manually in an existing "
-                "ParaView session.\n\nFile: "+str(folder/"model.vtm")
+                self, "ParaView not found",
+                "Install ParaView, or open model.vtm manually in an existing "
+                "ParaView session.\n\nFile: " + str(folder / "model.vtm")
             )
             return
         try:
-            # Never use a shell; do not pass untrusted command arguments.
-            subprocess.Popen(
-                [exe,str(folder/"model.vtm")],
-                cwd=str(folder),
-                stdout=subprocess.DEVNULL,
-                stderr=subprocess.DEVNULL,
-                start_new_session=True
+            launched, _pid = QProcess.startDetached(
+                executable, [str(folder / "model.vtm")], str(folder)
             )
+            if not launched:
+                raise RuntimeError("ParaView did not start")
             self.status.setText("Opening selected 3D model in desktop ParaView.")
-        except OSError as exc:
-            self._error("Cannot launch ParaView",exc)
+        except (OSError, RuntimeError) as exc:
+            self._error("Cannot launch ParaView", exc)
