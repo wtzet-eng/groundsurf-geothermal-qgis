@@ -1,11 +1,11 @@
-# GroundSurf Geothermal 0.4.1 — Security and Qt6 compatibility maintenance
+# GroundSurf Geothermal 0.4.2 — Import directly from QGIS
 
 An experimental **local-first QGIS plugin** for managing wells, map layers and a
 versioned geological project database. Version 0.4 adds a **preliminary 3D
 interpolation engine** for shared geological contacts. It is not a validated
 geothermal simulator or professional structural modelling replacement.
 
-## What works in 0.4.1
+## What works in 0.4.2
 
 - Create/open a local **GeoPackage (.gpkg)** project.
 - Store well point geometries (EPSG:4326 WGS84), depths and elevations.
@@ -30,6 +30,8 @@ geothermal simulator or professional structural modelling replacement.
   clipped to input-well triangulation (no extrapolation).
 - Versioned local 3D model catalogue with VTK/ParaView scene exports,
   manifest, provenance, vertical datum and reproducibility hash.
+- **Import from QGIS:** Copy existing point wells with automatic field mapping
+  and coordinate conversion; link existing local maps without duplication.
 - No remote service, account, uploaded site data or GitHub runtime required.
 
 ## Important data conventions
@@ -53,6 +55,7 @@ geothermal simulator or professional structural modelling replacement.
    **GroundSurf Geothermal**.
 3. Click **GroundSurf Geothermal** in the toolbar or Plugins menu.
 4. Click **New project**, choose a fresh `.gpkg` filename.
+   For existing data, click **Import from QGIS** to use open project layers.
 5. Add wells or import the sample CSV from `examples/sample_wells.csv`.
 6. Under **Well log**, create formation codes (e.g. Q, C, B).
 7. Add lithological intervals manually or import `examples/sample_intervals.csv`.
@@ -76,6 +79,36 @@ geothermal simulator or professional structural modelling replacement.
 The GeoPackage is the source of truth for wells and the app tables. External
 map layers are referenced by relative path when possible, with an absolute
 fallback; use Relink map when the source is no longer available.
+
+### Import from open QGIS projects (new in 0.4.2)
+
+**No intermediate CSV is needed** if the well layer already appears in your
+QGIS Layers panel.
+
+1. Open the well or geological map layer in QGIS as usual.
+2. In GroundSurf Geothermal, create/open a local GroundSurf GeoPackage.
+3. Click **Import from QGIS**. The active QGIS layer is selected by default.
+4. For well points, choose **Copy point features as GroundSurf wells**.
+   Review the proposed mapping of `well_id`, `name`, `total_depth_m`,
+   `ground_elev_m`, `vertical_datum`, `source` and `notes`.
+   Typical source names such as `BH_ID`, `WellName`, `Depth`, `RL`
+   and `Datum` are suggested automatically.
+5. Tick **Import selected features only** if you want only your QGIS
+   selection. Otherwise import every point in that layer.
+6. The source CRS is used to convert geometry to WGS84. Depth and elevation
+   values are **not** converted between metres and feet, nor are vertical
+   datums transformed. Check the original measurement units.
+7. For maps, choose **Link existing map source (no data copied)**.
+   GeoPackage, shapefile, GeoJSON and GeoTIFF links are supported. The
+   original QGIS layer, including its styling, is kept in place.
+8. If the source is an in-memory, virtual or remote service map, save it
+   to GeoPackage or GeoTIFF before linking permanently. Well point features
+   from memory layers can still be copied directly.
+
+Linked maps are reference data, **not automatic fault surfaces or other 3D
+modelling constraints**. Real wells copied into the GroundSurf GeoPackage
+can immediately be used in well logs, section interpretation and preliminary
+3D modelling. Existing input layers are never modified by the importer.
 
 ### CSV columns
 
@@ -192,6 +225,7 @@ QT_QPA_PLATFORM=offscreen PYTHONPATH=. /usr/bin/python3 tools/smoke_qgis.py
 QT_QPA_PLATFORM=offscreen PYTHONPATH=. /usr/bin/python3 tools/smoke_v02.py
 QT_QPA_PLATFORM=offscreen PYTHONPATH=. /usr/bin/python3 tools/smoke_v03.py
 QT_QPA_PLATFORM=offscreen PYTHONPATH=. /usr/bin/python3 tools/smoke_v04.py
+QT_QPA_PLATFORM=offscreen PYTHONPATH=. /usr/bin/python3 tools/smoke_qgis_import_v042.py
 python3 tools/build_zip.py
 ```
 
@@ -213,6 +247,7 @@ QGIS runtime compatibility beyond the tested installation is not guaranteed.
 - `groundsurf_geothermal/model_adapter.py` — QGIS well and CRS validation.
 - `groundsurf_geothermal/models.py` — local model catalogue and backup.
 - `groundsurf_geothermal/model_ui.py` — 3D modelling UI and ParaView launch.
+- `groundsurf_geothermal/qgis_import.py` — live QGIS layer import and mapping UI.
 - `docs/ARCHITECTURE.md` — extensible module boundaries.
 
 **Local geological data and large files do not belong in GitHub.** Keep

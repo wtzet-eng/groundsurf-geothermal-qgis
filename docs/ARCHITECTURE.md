@@ -1,4 +1,4 @@
-# GroundSurf Geothermal architecture — v0.4
+# GroundSurf Geothermal architecture — v0.4.2
 
 ## Stable boundaries
 
@@ -82,3 +82,24 @@ well logs and user project files remain local.
 The new `gs_model_runs` catalogue and `gs_meta.model_schema_version = 1`
 are additive to the existing GeoPackage version 2 schema. Existing projects
 receive a backup before the first model module migration.
+
+
+## Importing from an existing QGIS project (0.4.2)
+
+The QGIS plug-in enumerates QgsProject.instance().mapLayers(), excluding
+GroundSurf's own wells and transient section preview layers. Point wells
+can be copied into the GroundSurf GeoPackage through preflight attribute
+validation and QGIS CRS transformation (EPSG:4326). All records are
+validated first, then committed in one GroundSurf well-layer edit transaction.
+The original layer is not edited and its geometry is not transformed in place.
+
+For local vector/raster maps, the plug-in registers the existing file URI
+(and named GeoPackage sublayer) in the gs_map_layers catalogue without
+copying data or adding a duplicate QGIS layer. On subsequent project loads,
+file-backed links are resolved relative to the GroundSurf project and any
+already-open QGIS layer is reused. The plug-in tracks ownership separately,
+so relinking cannot remove an existing user-owned QGIS source.
+
+These registered maps remain *context layers*, not automatically structural
+geological constraints. Memory and service layers cannot be persistently
+linked until a separate source-URI preservation feature is designed.

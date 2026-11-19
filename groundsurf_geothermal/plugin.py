@@ -1,4 +1,4 @@
-"""GroundSurf Geothermal 0.4: wells, maps and local project workspace."""
+"""GroundSurf Geothermal 0.4.2: wells, maps and local project workspace."""
 import os
 from pathlib import Path
 
@@ -19,6 +19,7 @@ from .well_manager import WellManagerMixin
 from .section_ui import SectionToolsMixin
 from .model_ui import ModelToolsMixin
 from . import sections, models
+from .qgis_import import ImportFromQGISDialog, file_backed_map, import_wells
 
 
 class GroundSurfGeothermalPlugin:
@@ -97,8 +98,9 @@ class GeothermalDock(ModelToolsMixin, SectionToolsMixin, WellManagerMixin, QDock
         entries = (
             ("New project", self.new_project),
             ("Open project", self.open_project),
-            ("Add well", self.add_well),
+            ("Import from QGIS", self.import_from_qgis),
             ("Import wells CSV", self.import_csv),
+            ("Add well", self.add_well),
             ("Add map layer", self.add_map),
             ("Relink map", self.relink_map),
             ("Switch theme", self.toggle_theme),
@@ -142,7 +144,7 @@ class GeothermalDock(ModelToolsMixin, SectionToolsMixin, WellManagerMixin, QDock
         self.info = QTextEdit()
         self.info.setReadOnly(True)
         self.info.setPlainText(
-            "GroundSurf Geothermal 0.4\n\n"
+            "GroundSurf Geothermal 0.4.2\n\n"
             "Local GeoPackage projects and WGS84 well locations.\n"
             "Depths: metres, positive downward.\n"
             "Elevations: metres, datum supplied by user.\n\n"
@@ -392,6 +394,58 @@ class GeothermalDock(ModelToolsMixin, SectionToolsMixin, WellManagerMixin, QDock
         except Exception as exc:
             self._error("Well import failed", exc)
 
+    def import_from_qgis(self):
+        """Import already-open QGIS point layers or link existing map files."""
+        if not self._require_project():
+            return
+        active_layer_getter = getattr(self.iface, "activeLayer", None)
+        active_layer = active_layer_getter() if callable(active_layer_getter) else None
+        dialog = ImportFromQGISDialog(
+            excluded_ids=(self.well_layer.id(), *self._preview_line_ids.values()),
+            preferred_layer_id=active_layer.id() if active_layer else None,
+            parent=self,
+        )
+        if not dialog.layers:
+            QMessageBox.information(
+                self, "No QGIS layers",
+                "Open a well point layer or map in QGIS first, then try again."
+            )
+            return
+        if dialog.exec() != QDialog.DialogCode.Accepted:
+            return
+        try:
+            selection = dialog.selection()
+            if not selection:
+                return
+            layer = selection["layer"]
+            if selection["mode"] == "wells":
+                count = import_wells(
+                    layer,
+                    self.well_layer,
+                    selection["mapping"],
+                    selected_only=selection["selected_only"],
+                )
+                self.refresh()
+                self.tabs.setCurrentIndex(0)
+                self.status.setText(
+                    f"Copied {count} well features from QGIS layer "
+                    f"'{layer.name()}'. Source layer was not modified."
+                )
+            else:
+                file_path, source_layer, kind = file_backed_map(layer)
+                self._load_map(
+                    file_path, layer.name(), kind, record=True,
+                    source_layer=source_layer, existing_layer=layer,
+                )
+                self.refresh()
+                self.tabs.setCurrentIndex(1)
+                self.status.setText(
+                    f"Linked QGIS map '{layer.name()}' without duplicating "
+                    "or changing the original layer."
+                )
+        except Exception as exc:
+            self._error("Import from QGIS failed", exc)
+
     def _make_map_layer(self, file_path, name, kind, source_layer=None):
         uri = str(file_path)
         if kind == "vector" and source_layer:
@@ -402,22 +456,53 @@ class GeothermalDock(ModelToolsMixin, SectionToolsMixin, WellManagerMixin, QDock
             raise ValueError("Cannot read map layer: " + file_path)
         return layer
 
-    def _load_map(self, file_path, name, kind, record, source_layer=None):
-        layer = self._make_map_layer(file_path, name, kind, source_layer)
+    def _existing_map_layer(self, file_path, kind, source_layer=None):
+        """Find an existing QGIS file source, preserving the user's layer/style."""
+        wanted = str(Path(file_path).resolve())
+        for layer in QgsProject.instance().mapLayers().values():
+            if not layer.isValid() or (
+                self.well_layer is not None and layer.id() == self.well_layer.id()
+            ):
+                continue
+            if kind == "raster" and not isinstance(layer, QgsRasterLayer):
+                continue
+            if kind == "vector" and not isinstance(layer, QgsVectorLayer):
+                continue
+            uri = str(layer.source())
+            base, _, options = uri.partition("|")
+            if str(Path(base).resolve()) != wanted:
+                continue
+            if kind == "vector" and Path(file_path).suffix.casefold() == ".gpkg":
+                if "layername=" + str(source_layer or "") not in options.split("|"):
+                    continue
+            return layer
+        return None
+
+    def _load_map(
+        self, file_path, name, kind, record, source_layer=None, existing_layer=None
+    ):
+        """Use existing user layer when possible; do not remove their layer."""
+        layer = existing_layer or self._existing_map_layer(
+            file_path, kind, source_layer
+        )
+        is_new = layer is None
+        if is_new:
+            layer = self._make_map_layer(file_path, name, kind, source_layer)
         if record:
             db.record_map(self.path, file_path, name, kind, source_layer)
             for record_id, abs_path, _name, _kind, _rel, source in db.maps(self.path):
                 if (abs_path == str(Path(file_path).resolve()) and
                         source == (source_layer or "")):
                     previous = self.map_registry.pop(record_id, None)
-                    if previous is not None:
+                    # Crucial: never remove a layer that existed before GroundSurf.
+                    if previous is not None and previous in self.map_layer_ids:
                         QgsProject.instance().removeMapLayer(previous)
-                        if previous in self.map_layer_ids:
-                            self.map_layer_ids.remove(previous)
+                        self.map_layer_ids.remove(previous)
                     self.map_registry[record_id] = layer.id()
                     break
-        QgsProject.instance().addMapLayer(layer)
-        self.map_layer_ids.append(layer.id())
+        if is_new:
+            QgsProject.instance().addMapLayer(layer)
+            self.map_layer_ids.append(layer.id())
         return layer
 
     def _choose_map_sublayer(self, file_path):
@@ -498,10 +583,10 @@ class GeothermalDock(ModelToolsMixin, SectionToolsMixin, WellManagerMixin, QDock
             )
             db.relink_map(self.path, record_id, file_path, source_layer)
             old_layer_id = self.map_registry.pop(record_id, None)
-            if old_layer_id is not None:
+            # Keep user-owned QGIS layers untouched during source relinking.
+            if old_layer_id is not None and old_layer_id in self.map_layer_ids:
                 QgsProject.instance().removeMapLayer(old_layer_id)
-                if old_layer_id in self.map_layer_ids:
-                    self.map_layer_ids.remove(old_layer_id)
+                self.map_layer_ids.remove(old_layer_id)
             QgsProject.instance().addMapLayer(layer)
             self.map_registry[record_id] = layer.id()
             self.map_layer_ids.append(layer.id())
