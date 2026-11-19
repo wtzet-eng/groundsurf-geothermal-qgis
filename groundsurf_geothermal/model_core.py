@@ -11,7 +11,7 @@ from pathlib import Path
 import json
 import math
 import re
-from xml.sax.saxutils import quoteattr
+from html import escape as escape_xml_attribute
 
 METHOD = "IDW horizon elevation (power=2) on subdivided Delaunay triangulation"
 MIN_SEPARATION_M = 0.1
@@ -282,7 +282,8 @@ def export_model(mesh, folder, name, epsg, datum, wells, warnings=()):
             _write_wedges(root/file,mesh,upper,lower)
             outputs.append((f"Unit {upper} to {lower}",file))
         blocks="\n".join(
-            f'    <DataSet index="{i}" name={quoteattr(label)} file={quoteattr(file)}/>'
+            f'    <DataSet index="{i}" name="{escape_xml_attribute(label, quote=True)}" '
+            f'file="{escape_xml_attribute(file, quote=True)}"/>'
             for i,(label,file) in enumerate(outputs)
         )
         (root/"model.vtm").write_text(
@@ -291,7 +292,7 @@ def export_model(mesh, folder, name, epsg, datum, wells, warnings=()):
             '<vtkMultiBlockDataSet>\n'+blocks+'\n'
             '</vtkMultiBlockDataSet>\n</VTKFile>\n',encoding="utf-8")
         manifest={
-            "application":"GroundSurf Geothermal", "version":"0.4.0",
+            "application":"GroundSurf Geothermal", "version":"0.4.1",
             "name":str(name), "created_utc":datetime.now(timezone.utc).isoformat(),
             "method":METHOD, "crs":epsg, "vertical_datum":datum,
             "horizons":mesh["horizons"], "subdivisions":mesh["subdivisions"],

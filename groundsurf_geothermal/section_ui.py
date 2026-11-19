@@ -23,7 +23,7 @@ class SectionWindow(QDialog):
         self.setWindowTitle("GroundSurf Geothermal · Geological cross-section")
         self.resize(1190, 730)
         self.setMinimumSize(420, 360)
-        self.setAttribute(Qt.WA_DeleteOnClose, False)
+        self.setAttribute(Qt.WidgetAttribute.WA_DeleteOnClose, False)
 
         outer = QVBoxLayout(self)
         self.description = QLabel("")
@@ -105,11 +105,11 @@ class SectionWindow(QDialog):
         )
         footnote.setWordWrap(True)
         form.addRow(footnote)
-        buttons = QDialogButtonBox(QDialogButtonBox.Ok | QDialogButtonBox.Cancel)
+        buttons = QDialogButtonBox(QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel)
         buttons.accepted.connect(dialog.accept)
         buttons.rejected.connect(dialog.reject)
         form.addRow(buttons)
-        if dialog.exec_() != QDialog.Accepted:
+        if dialog.exec() != QDialog.DialogCode.Accepted:
             return
         wid = str(well_combo.currentData())
         code = formation_combo.currentText()
@@ -142,8 +142,8 @@ class SectionWindow(QDialog):
             self, "Remove interpreted contact?",
             f"Remove section-only pick {well_id}/{code}?\n"
             "Original well data will not be changed.",
-            QMessageBox.Yes | QMessageBox.No, QMessageBox.No
-        ) != QMessageBox.Yes:
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No, QMessageBox.StandardButton.No
+        ) != QMessageBox.StandardButton.Yes:
             return
         try:
             sections.delete_pick(self.project_file, self.section_id, well_id, code)
@@ -332,8 +332,8 @@ class SectionToolsMixin:
             self, "Delete section",
             "Delete this section and all its separate interpreted contacts?\n"
             "Original wells and formations will remain unchanged.",
-            QMessageBox.Yes | QMessageBox.No, QMessageBox.No
-        ) != QMessageBox.Yes:
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No, QMessageBox.StandardButton.No
+        ) != QMessageBox.StandardButton.Yes:
             return
         try:
             if self._section_window:

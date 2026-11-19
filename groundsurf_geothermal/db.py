@@ -384,18 +384,23 @@ def add_observation(path, well_layer, well_id, observed_utc,
 
 
 def delete_well_record(path, table, record_id, well_id):
-    tables = {
-        "interval": "gs_intervals",
-        "top": "gs_formation_tops",
-        "observation": "gs_observations",
-    }
-    if table not in tables:
-        raise ValueError("Unrecognised record type")
+    # Table names are not SQL parameters. Use fixed SQL literals per record type.
+    arguments = (int(record_id), str(well_id))
     with connect(path) as con:
-        cursor = con.execute(
-            f"DELETE FROM {tables[table]} WHERE id=? AND well_id=?",
-            (int(record_id), well_id),
-        )
+        if table == "interval":
+            cursor = con.execute(
+                "DELETE FROM gs_intervals WHERE id=? AND well_id=?", arguments
+            )
+        elif table == "top":
+            cursor = con.execute(
+                "DELETE FROM gs_formation_tops WHERE id=? AND well_id=?", arguments
+            )
+        elif table == "observation":
+            cursor = con.execute(
+                "DELETE FROM gs_observations WHERE id=? AND well_id=?", arguments
+            )
+        else:
+            raise ValueError("Unrecognised record type")
         if cursor.rowcount != 1:
             raise ValueError("Record was not found for this well")
 
