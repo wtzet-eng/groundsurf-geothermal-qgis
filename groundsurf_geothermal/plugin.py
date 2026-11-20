@@ -1,4 +1,4 @@
-"""GroundSurf Geothermal 0.4.11: local and mapped geological workspace."""
+"""GroundSurf Geothermal 0.4.12: local and mapped geological workspace."""
 import os
 from pathlib import Path
 
@@ -199,7 +199,7 @@ class GeothermalDock(ContactToolsMixin, ModelToolsMixin,
         self.info = QTextEdit()
         self.info.setReadOnly(True)
         self.info.setPlainText(
-            "GroundSurf Geothermal 0.4.11\n\n"
+            "GroundSurf Geothermal 0.4.12\n\n"
             "Local GeoPackage projects and WGS84 well locations.\n"
             "Depths: metres, positive downward.\n"
             "Elevations: metres, datum supplied by user.\n\n"

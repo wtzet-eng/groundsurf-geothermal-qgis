@@ -1,4 +1,4 @@
-# GroundSurf Geothermal architecture — v0.4.11
+# GroundSurf Geothermal architecture — v0.4.12
 
 ## Stable boundaries
 
@@ -291,3 +291,27 @@ out small triangles. Optional AxesGrid is explicitly labelled LOCAL
 metres; no geographic assignment is made. Tests use an isolated
 synthetic 50-PointZ-row source, QGIS offscreen geometry and a real
 ParaView 6.2.0 scripted offscreen render with outlines and axes box.
+
+
+## Isolated model deletion from the QGIS dock (0.4.12)
+
+`gs_model_runs` is a catalogue of derived conceptual 3D model
+outputs. `models.remove_model(project_file, model_id)` deletes
+exactly one model entry by unique row ID in a SQLite transaction.
+No other tables or observations are touched. Model output files
+are not affected by this database operation.
+
+The QGIS ModelToolsMixin **Delete model…** button opens a confirmation
+dialog with Cancel as default. Optional generated-folder cleanup is
+opt-in and uses `QFile.moveToTrash` for recoverable OS Trash handling,
+rather than `shutil.rmtree` or hard deletion. Folder eligibility
+requires a generated `gsmodel-` directory, `model.vtm`,
+`model.json` with matching application and model name, and no
+shared catalogue references or symlinked source folder.
+
+Tests use only synthetic GeoPackage and VTK model paths to verify
+Cancel, catalogue-only removal, selected-ID targeting with duplicate
+names, Trash opt-in, failed Trash preserving the catalogue, unsafe
+folder rejection, duplicate-output and symlink guards, and
+preservation of geological contacts and all other model folders.
+Qt5 `QFile.moveToTrash` support was confirmed on the test system.
