@@ -2,8 +2,8 @@
 name=GroundSurf Geothermal
 qgisMinimumVersion=3.34
 qgisMaximumVersion=3.99
-description=Import projected or local XYZ boreholes, review contacts, and export conceptual 3D geology to ParaView.
-version=0.4.7
+description=Import QGIS boreholes or XYZ, build conceptual 3D geology for ParaView in a clearer compact dock.
+version=0.4.8
 author=GroundSurf
 email=tzuk.ls@outlook.com
 about=Experimental offline QGIS 3.34+ workbench. Import PointZ ID/X/Y/Z/Strata from open QGIS; correct a known source CRS for mapped work, OR keep metre XYZ in an explicitly ungeoreferenced local project dataset and export to ParaView. Store observed contact elevations separately from well-log depths. Preliminary IDW 3D only. Built-in Python standard library only; external ParaView is optional for 3D viewing. No validated geothermal simulation or server transfer. Feedback: tzuk.ls@outlook.com. Tutorials: https://www.youtube.com/@Ground-Surf.

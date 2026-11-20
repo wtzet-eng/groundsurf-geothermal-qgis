@@ -18,14 +18,16 @@ from . import model_adapter, contact_adapter, local_xyz, model_core, models
 class ModelToolsMixin:
     def setup_model_tools(self, tabs):
         tab=QWidget()
+        self.model_tab=tab
         layout=QVBoxLayout(tab)
+        layout.setContentsMargins(8, 8, 8, 8)
+        layout.setSpacing(5)
         title=QLabel("3D Geological Models · PRELIMINARY")
         title.setObjectName("gsModelTitle")
         layout.addWidget(title)
         explanation=QLabel(
-            "Interpolate shared contact elevations from three or more wells "
-            "with the same vertical datum. Export triangulated 3D horizons and "
-            "wedge volumes in ParaView-readable VTK format."
+            "Build conceptual 3D geological surfaces from boreholes or XYZ "
+            "contacts. Export to ParaView (VTK)."
         )
         explanation.setWordWrap(True)
         layout.addWidget(explanation)
@@ -42,10 +44,13 @@ class ModelToolsMixin:
         )
         layout.addWidget(self.model_source)
         model_note = QLabel(
-            "Contact Z mode uses actual geological elevation horizons; it "
-            "does not interpret contact Z as a drilling depth or assume "
-            "the uppermost horizon is the ground surface. Ambiguous "
-            "repeated horizon heights are excluded, not guessed."
+            "Conceptual IDW only. Z contacts are elevations, not depths. "
+            "Ambiguous horizons are excluded."
+        )
+        model_note.setToolTip(
+            "No faults, groundwater or heat-flow simulation. No model "
+            "extrapolation beyond the well footprint. Check vertical "
+            "datums and geological units before engineering use."
         )
         model_note.setWordWrap(True)
         layout.addWidget(model_note)
@@ -57,26 +62,23 @@ class ModelToolsMixin:
             button=QPushButton(text)
             button.clicked.connect(action)
             buttons.addWidget(button)
+        folder_button=QPushButton("Model folder")
+        folder_button.setToolTip("Open the selected model output directory")
+        folder_button.clicked.connect(self.open_model_folder)
+        buttons.addWidget(folder_button)
         layout.addLayout(buttons)
         self.model_table=QTableWidget(0,3)
+        # Reserve space for a header AND at least one saved-model row.
+        self.model_table.setMinimumHeight(92)
         self.model_table.setHorizontalHeaderLabels(
             ["Model", "Built (UTC)", "Wells"]
         )
         self.model_table.setSelectionBehavior(QTableWidget.SelectionBehavior.SelectRows)
         self.model_table.setEditTriggers(QTableWidget.EditTrigger.NoEditTriggers)
         layout.addWidget(self.model_table,1)
-        folder_button=QPushButton("Open selected model folder")
-        folder_button.clicked.connect(self.open_model_folder)
-        layout.addWidget(folder_button)
-        limitations=QLabel(
-            "IDW horizon interpolation is a conceptual approximation, not "
-            "a calibrated geostatistical or thermal model. No extrapolation "
-            "beyond the well footprint. No faults or reservoir flow simulation. "
-            "Imported and model-generated evidence remain separate."
-        )
-        limitations.setWordWrap(True)
-        layout.addWidget(limitations)
-        tabs.addTab(tab,"3D Models")
+        # The table now has all the remaining height: saved-model rows
+        # must not disappear behind fixed explanatory widgets.
+        tabs.insertTab(0,tab,"3D Models")
         self.refresh_models()
 
     def refresh_models(self):

@@ -1,11 +1,11 @@
-# GroundSurf Geothermal 0.4.7 — Safe local XYZ or mapped QGIS importing
+# GroundSurf Geothermal 0.4.8 — A clearer, more compact QGIS dock
 
 An experimental **local-first QGIS plugin** for managing wells, map layers and a
 versioned geological project database. Version 0.4 adds a **preliminary 3D
 interpolation engine** for shared geological contacts. It is not a validated
 geothermal simulator or professional structural modelling replacement.
 
-## What works in 0.4.7
+## What works in 0.4.8
 
 - Create/open a local **GeoPackage (.gpkg)** project.
 - Store well point geometries (EPSG:4326 WGS84), depths and elevations.
@@ -65,6 +65,35 @@ geothermal simulator or professional structural modelling replacement.
   An unspecified vertical reference allows storage but blocks 3D modelling.
 - Faulted geology, heat-flow and groundwater simulations are **not**
   present in 0.4. Preliminary 3D surfaces are inferred, not observed. Do not make engineering decisions based on this preview.
+
+## Easier navigation in 0.4.8
+
+The narrow QGIS dock gives more of the window to the actual geological
+data. The main toolbar now shows only two important workflows and
+project controls:
+
+- **Import from QGIS** — use a layer already open in QGIS.
+- **3D MODELS →** — one-click entry into the 3D modeller and ParaView
+  scene exporter, even if the tab strip has scrolled.
+- **New project / Open project** — always visible.
+- **More tools ▼** — expands the well CSV, manual well editing, map
+  source management, theme and Help/feedback actions. The setting is
+  remembered; no existing operation has been removed.
+
+The **3D Models** tab is now first in the tab strip. Clicking any
+heading in the **Project Explorer** jumps to its tab. The explorer
+retains enough height to show the important categories instead of
+hiding the last row.
+
+Within the 3D Models page, **Build model / Open in ParaView / Model
+folder** occupy one toolbar row. The saved-model table has sufficient
+height to display both its column headings and actual model records.
+The compact notes still flag conceptual IDW limitations; detailed
+warnings remain in the modelling confirmation and `model.json`.
+
+These are QGIS UI-only changes: source data, modelling calculations,
+existing local GeoPackages, coordinate reference handling, geological
+uncertainty flags and ParaView outputs are unchanged.
 
 ## Install in QGIS 3.34+
 
@@ -431,6 +460,7 @@ QT_QPA_PLATFORM=offscreen PYTHONPATH=. /usr/bin/python3 tools/smoke_grouped_v044
 QT_QPA_PLATFORM=offscreen PYTHONPATH=. /usr/bin/python3 tools/smoke_crs_v045.py
 QT_QPA_PLATFORM=offscreen PYTHONPATH=. /usr/bin/python3 tools/smoke_pointz_v046.py
 QT_QPA_PLATFORM=offscreen PYTHONPATH=. /usr/bin/python3 tools/smoke_local_xyz_v047.py
+QT_QPA_PLATFORM=offscreen PYTHONPATH=. /usr/bin/python3 tools/smoke_layout_v048.py
 python3 tools/build_zip.py
 ```
 

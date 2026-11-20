@@ -1,4 +1,4 @@
-"""GroundSurf Geothermal 0.4.7: local and mapped geological workspace."""
+"""GroundSurf Geothermal 0.4.8: local and mapped geological workspace."""
 import os
 from pathlib import Path
 
@@ -89,7 +89,8 @@ class GeothermalDock(ContactToolsMixin, ModelToolsMixin,
         content = QWidget()
         self.setWidget(content)
         outer = QVBoxLayout(content)
-        outer.setSpacing(9)
+        outer.setContentsMargins(9, 8, 9, 8)
+        outer.setSpacing(5)
         heading = QLabel("GroundSurf  /  GEOTHERMAL")
         heading.setObjectName("gsHeading")
         outer.addWidget(heading)
@@ -97,30 +98,75 @@ class GeothermalDock(ContactToolsMixin, ModelToolsMixin,
         description.setObjectName("gsDescription")
         outer.addWidget(description)
 
-        actions = QGridLayout()
-        entries = (
+        # Keep the two most frequent workflows visible without forcing a
+        # small QGIS dock to show nine large buttons at all times.
+        primary = QGridLayout()
+        primary.setHorizontalSpacing(6)
+        primary.setVerticalSpacing(5)
+        self.import_qgis_button = QPushButton("Import from QGIS")
+        self.import_qgis_button.clicked.connect(self.import_from_qgis)
+        primary.addWidget(self.import_qgis_button, 0, 0)
+        self.models_shortcut = QPushButton("3D MODELS  →")
+        self.models_shortcut.setObjectName("gsModelsShortcut")
+        self.models_shortcut.setToolTip(
+            "Open the geological 3D model workspace. "
+            "Build conceptual surfaces and export to ParaView."
+        )
+        self.models_shortcut.clicked.connect(self.open_models)
+        primary.addWidget(self.models_shortcut, 0, 1)
+        for col, (name, handler) in enumerate((
             ("New project", self.new_project),
             ("Open project", self.open_project),
-            ("Import from QGIS", self.import_from_qgis),
+        )):
+            button = QPushButton(name)
+            button.clicked.connect(handler)
+            primary.addWidget(button, 1, col)
+        outer.addLayout(primary)
+
+        # Optional commands stay one click away, but no longer squeeze
+        # the Project Explorer and tables on a standard laptop screen.
+        self.more_tools_button = QPushButton()
+        self.more_tools_button.setObjectName("gsMoreTools")
+        self.more_tools_button.setCheckable(True)
+        self.more_tools_button.setToolTip(
+            "Show or hide well CSV, manual editing, maps and settings"
+        )
+        outer.addWidget(self.more_tools_button)
+        self.extra_actions = QWidget()
+        extras = QGridLayout(self.extra_actions)
+        extras.setContentsMargins(0, 0, 0, 0)
+        extras.setHorizontalSpacing(6)
+        extras.setVerticalSpacing(5)
+        for index, (name, handler) in enumerate((
             ("Import wells CSV", self.import_csv),
             ("Add well", self.add_well),
             ("Add map layer", self.add_map),
             ("Relink map", self.relink_map),
             ("Switch theme", self.toggle_theme),
             ("Help & feedback", self.open_help),
-        )
-        for index, (caption, handler) in enumerate(entries):
-            button = QPushButton(caption)
+        )):
+            button = QPushButton(name)
             button.clicked.connect(handler)
-            actions.addWidget(button, index // 2, index % 2)
-        outer.addLayout(actions)
+            extras.addWidget(button, index // 2, index % 2)
+        outer.addWidget(self.extra_actions)
+        self.more_tools_button.toggled.connect(self._toggle_more_tools)
+        saved_more = str(self.settings.value(
+            "show_more_tools", "false"
+        )).strip().lower() in ("true", "1", "yes")
+        self.more_tools_button.setChecked(saved_more)
+        self._toggle_more_tools(saved_more)
 
         self.project_label = QLabel("No project loaded")
         self.project_label.setWordWrap(True)
         outer.addWidget(self.project_label)
 
         splitter = QSplitter(Qt.Orientation.Vertical)
+        self.explorer_splitter = splitter
+        splitter.setChildrenCollapsible(False)
+        splitter.setHandleWidth(7)
         self.tree = QTreeWidget()
+        # A squeezed splitter previously hid lower explorer entries.
+        self.tree.setMinimumHeight(135)
         self.tree.setHeaderLabel("PROJECT EXPLORER")
         self.tree.itemClicked.connect(self._tree_selected)
         splitter.addWidget(self.tree)
@@ -144,11 +190,16 @@ class GeothermalDock(ContactToolsMixin, ModelToolsMixin,
         self.setup_well_manager(outer, tabs)
         self.setup_section_tools(tabs)
         self.setup_model_tools(tabs)
+        # 3D Models is also the FIRST visible tab, not an off-screen tab
+        # accessible only after scrolling through the tab bar.
+        tabs.tabBar().setUsesScrollButtons(True)
+        tabs.tabBar().setExpanding(False)
+        tabs.setDocumentMode(True)
 
         self.info = QTextEdit()
         self.info.setReadOnly(True)
         self.info.setPlainText(
-            "GroundSurf Geothermal 0.4.7\n\n"
+            "GroundSurf Geothermal 0.4.8\n\n"
             "Local GeoPackage projects and WGS84 well locations.\n"
             "Depths: metres, positive downward.\n"
             "Elevations: metres, datum supplied by user.\n\n"
@@ -191,7 +242,10 @@ class GeothermalDock(ContactToolsMixin, ModelToolsMixin,
         help_layout.addStretch()
         self.help_tab_index = tabs.addTab(help_tab, "Help")
         splitter.addWidget(tabs)
-        splitter.setSizes([170, 360])
+        tabs.setMinimumHeight(220)
+        splitter.setStretchFactor(0, 1)
+        splitter.setStretchFactor(1, 3)
+        splitter.setSizes([170, 420])
         outer.addWidget(splitter, 1)
 
         self.status = QLabel("Offline by design · No cloud data transfer")
@@ -209,6 +263,16 @@ class GeothermalDock(ContactToolsMixin, ModelToolsMixin,
                 QPushButton { background:#303b34; border:1px solid #536957;
                               padding:8px; border-radius:3px; }
                 QPushButton:hover { background:#405847; }
+                QPushButton#gsModelsShortcut {
+                    background:#234f35; border:1px solid #72a888;
+                    color:#effaf0; font-weight:700; padding:7px;
+                }
+                QPushButton#gsModelsShortcut:hover { background:#326c49; }
+                QPushButton#gsMoreTools {
+                    background:#252b27; border:1px solid #3c5143;
+                    color:#afc8b8; padding:4px;
+                }
+                QSplitter::handle { background:#374c3e; }
                 QTreeWidget, QTableWidget, QTextEdit {
                     background:#252c28; alternate-background-color:#303732;
                     selection-background-color:#395e45; border:1px solid #4b574f;
@@ -225,6 +289,16 @@ class GeothermalDock(ContactToolsMixin, ModelToolsMixin,
                 QPushButton { background:#e8f1eb; border:1px solid #afc6b5;
                               padding:8px; border-radius:3px; }
                 QPushButton:hover { background:#d2e7d8; }
+                QPushButton#gsModelsShortcut {
+                    background:#d3e9da; border:1px solid #398158;
+                    color:#1b4e30; font-weight:700; padding:7px;
+                }
+                QPushButton#gsModelsShortcut:hover { background:#bfe0cb; }
+                QPushButton#gsMoreTools {
+                    background:#f1f6f2; border:1px solid #c1d3c6;
+                    color:#416650; padding:4px;
+                }
+                QSplitter::handle { background:#d1ded4; }
                 QTreeWidget, QTableWidget, QTextEdit {
                     background:#fff; selection-background-color:#b3dbc1;
                     border:1px solid #bccbc0;
@@ -232,6 +306,17 @@ class GeothermalDock(ContactToolsMixin, ModelToolsMixin,
                 QTabBar::tab { background:#e8f1eb; padding:7px; }
                 QTabBar::tab:selected { background:#c2dfca; }
             """)
+
+    def _toggle_more_tools(self, shown):
+        self.extra_actions.setVisible(bool(shown))
+        self.more_tools_button.setText(
+            "More tools  ▲" if shown else "More tools  ▼"
+        )
+        self.settings.setValue("show_more_tools", bool(shown))
+
+    def open_models(self):
+        """One click from main controls to the visible 3D model workspace."""
+        self.tabs.setCurrentWidget(self.model_tab)
 
     def open_help(self):
         self.tabs.setCurrentIndex(self.help_tab_index)
@@ -780,7 +865,21 @@ class GeothermalDock(ContactToolsMixin, ModelToolsMixin,
         self.refresh_local_xyz()
 
     def _tree_selected(self, item, column):
-        self.status.setText("Selected: " + item.text(0))
+        """Project Explorer headings open their corresponding workspace."""
+        label = item.text(0)
+        destinations = {
+            "Wells": self.wells_table,
+            "Maps": self.maps_table,
+            "Z Contacts · geological elevations": self.contact_tab,
+            "Local XYZ · unlocated metre data": self.local_xyz_tab,
+            "3D Models · preliminary": self.model_tab,
+        }
+        target = destinations.get(label)
+        if target is None and item.parent() is not None:
+            target = destinations.get(item.parent().text(0))
+        if target is not None:
+            self.tabs.setCurrentWidget(target)
+        self.status.setText("Selected: " + label)
 
     def _zoom_well(self, row, column):
         if not self.well_layer:
