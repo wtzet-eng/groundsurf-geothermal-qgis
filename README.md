@@ -1,11 +1,11 @@
-# GroundSurf Geothermal 0.4.8 — A clearer, more compact QGIS dock
+# GroundSurf Geothermal 0.4.9 — Geological colour and borehole context in ParaView
 
 An experimental **local-first QGIS plugin** for managing wells, map layers and a
 versioned geological project database. Version 0.4 adds a **preliminary 3D
 interpolation engine** for shared geological contacts. It is not a validated
 geothermal simulator or professional structural modelling replacement.
 
-## What works in 0.4.8
+## What works in 0.4.9
 
 - Create/open a local **GeoPackage (.gpkg)** project.
 - Store well point geometries (EPSG:4326 WGS84), depths and elevations.
@@ -65,6 +65,63 @@ geothermal simulator or professional structural modelling replacement.
   An unspecified vertical reference allows storage but blocks 3D modelling.
 - Faulted geology, heat-flow and groundwater simulations are **not**
   present in 0.4. Preliminary 3D surfaces are inferred, not observed. Do not make engineering decisions based on this preview.
+
+## Geological presentation in ParaView (new in 0.4.9)
+
+GroundSurf now generates **two complementary ParaView opening paths**:
+
+- `model.vtm` — the original, unmodified geometric multiblock model for
+  manual review, numerical attribute checks and backwards compatibility.
+- `view_in_paraview.py` + `appearance.json` — a new **prepared scene**
+  with consistent geological unit colours, readable stratigraphic
+  labels, a dark `#212121` background, a useful oblique camera
+  perspective, and **source-contact well markers**.
+
+After building a model, select it in **3D Models** and click
+**Open in ParaView**. For newly exported models, GroundSurf uses
+ParaView's documented `--script` argument so unit colours and
+borehole overlays appear automatically. Models created before
+0.4.9 continue to open their original `model.vtm` file normally.
+
+### Display controls
+
+In **3D Models** in QGIS, choose a **ParaView display Z ×** value
+from 0.5× to 10× (default **1×**, no exaggeration). Tick **Boreholes**
+(default on) to include observed or source-derived contact markers
+and schematic vertical well sticks in the scene. The choice is stored
+in `appearance.json`.
+
+This changes **display only**. Original X/Y/Z, geological contact
+elevations, model grids, thickness values and source CRS metadata
+are not scaled or modified. To change the display after export,
+adjust the `vertical_exaggeration`, `show_boreholes`, or
+`show_contacts` fields in `appearance.json` and run the ParaView
+script again (or create a new model with other QGIS display settings).
+The script can also be run in an existing ParaView session through
+**Tools → Python Shell → Run Script**.
+
+In ParaView's Pipeline Browser, the geological volumes are separate
+toggleable pipeline items. This makes it easy to hide Quaternary,
+Pleistocene, Palaeogene, Cretaceous and other units independently.
+Source contacts are points; white schematic borehole sticks are
+vertical connectors between the modelled contact elevations, **not
+measured deviated well trajectories**. Interpolated surfaces remain
+available in the folder but are hidden by default to avoid visual
+flicker where coincident surfaces overlap volume faces.
+
+### Transparent evidence coverage (NOT confidence)
+
+Each interpolated surface carries `Distance_to_nearest_well_m` as a
+point array, and each volume carries it as a cell array. You can
+choose this quantity from ParaView's **Color By** menu to see where
+the geological model is close to, or remote from, borehole input.
+This is a **spatial proximity measure only**. It does NOT quantify
+geological uncertainty, produce calibrated confidence intervals, or
+make IDW interpolation a geostatistical prediction.
+
+Legend colours identify **source formation names**, not geological
+certainty or temperature. Any source units or inferred contacts
+must still be checked against the original survey/borehole records.
 
 ## Easier navigation in 0.4.8
 
@@ -461,6 +518,8 @@ QT_QPA_PLATFORM=offscreen PYTHONPATH=. /usr/bin/python3 tools/smoke_crs_v045.py
 QT_QPA_PLATFORM=offscreen PYTHONPATH=. /usr/bin/python3 tools/smoke_pointz_v046.py
 QT_QPA_PLATFORM=offscreen PYTHONPATH=. /usr/bin/python3 tools/smoke_local_xyz_v047.py
 QT_QPA_PLATFORM=offscreen PYTHONPATH=. /usr/bin/python3 tools/smoke_layout_v048.py
+PYTHONPATH=. /usr/bin/python3 tools/smoke_paraview_scene_v049.py
+QT_QPA_PLATFORM=offscreen PYTHONPATH=. /usr/bin/python3 tools/smoke_paraview_ui_v049.py
 python3 tools/build_zip.py
 ```
 
@@ -491,6 +550,10 @@ QGIS runtime compatibility beyond the tested installation is not guaranteed.
 - `groundsurf_geothermal/contact_adapter.py` — Z-based 3D surface input.
 - `groundsurf_geothermal/local_xyz.py` — separate local-metre XYZ store
   (no assigned map CRS), preview and 3D model input.
+- `groundsurf_geothermal/scene_style.py` — stable categorical palettes
+  and model presentation settings.
+- `groundsurf_geothermal/paraview_scene.py` — stand-alone ParaView
+  GUI Python script copied into each exported model folder.
 - `docs/ARCHITECTURE.md` — extensible module boundaries.
 
 **Local geological data and large files do not belong in GitHub.** Keep

@@ -54,7 +54,7 @@ with tempfile.TemporaryDirectory() as td:
         warnings=constraints["warnings"]
     )
     manifest_obj=json.loads(manifest.read_text())
-    assert manifest_obj["version"]=="0.4.8"
+    assert manifest_obj["version"]=="0.4.9"
     assert len(manifest_obj["outputs"])==5
     for out in manifest_obj["outputs"]:
         xml_path=output/out["file"]

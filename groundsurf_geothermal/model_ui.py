@@ -8,8 +8,8 @@ import uuid
 from qgis.PyQt.QtCore import Qt, QUrl, QProcess, QStandardPaths
 from qgis.PyQt.QtGui import QDesktopServices
 from qgis.PyQt.QtWidgets import (
-    QComboBox, QFileDialog, QHBoxLayout, QInputDialog, QLabel,
-    QMessageBox, QPushButton, QTableWidget, QTableWidgetItem,
+    QCheckBox, QComboBox, QDoubleSpinBox, QFileDialog, QHBoxLayout,
+    QInputDialog, QLabel, QMessageBox, QPushButton, QTableWidget, QTableWidgetItem,
     QVBoxLayout, QWidget,
 )
 from . import model_adapter, contact_adapter, local_xyz, model_core, models
@@ -54,6 +54,34 @@ class ModelToolsMixin:
         )
         model_note.setWordWrap(True)
         layout.addWidget(model_note)
+        scene_settings = QHBoxLayout()
+        scene_settings.addWidget(QLabel("ParaView display Z ×"))
+        self.scene_vertical = QDoubleSpinBox()
+        self.scene_vertical.setRange(0.5, 10.0)
+        self.scene_vertical.setDecimals(1)
+        self.scene_vertical.setSingleStep(0.5)
+        self.scene_vertical.setValue(
+            float(self.settings.value("3d_vertical_exaggeration", 1.0))
+        )
+        self.scene_vertical.setToolTip(
+            "Display-only vertical exaggeration; original XYZ and model "
+            "geological elevations remain unchanged."
+        )
+        self.scene_vertical.valueChanged.connect(
+            lambda value: self.settings.setValue(
+                "3d_vertical_exaggeration", float(value)
+            )
+        )
+        scene_settings.addWidget(self.scene_vertical)
+        self.show_boreholes = QCheckBox("Boreholes")
+        self.show_boreholes.setChecked(True)
+        self.show_boreholes.setToolTip(
+            "Include source-contact markers and schematic vertical well "
+            "sticks in the ParaView scene. They are NOT drilled trajectories."
+        )
+        scene_settings.addWidget(self.show_boreholes)
+        scene_settings.addStretch(1)
+        layout.addLayout(scene_settings)
         buttons=QHBoxLayout()
         for text,action in (
             ("Build model",self.build_model),
@@ -194,7 +222,9 @@ class ModelToolsMixin:
             ).hexdigest()
             scene,manifest=model_core.export_model(
                 mesh,output,name,constraints["epsg"],constraints["datum"],
-                constraints["provenance"],warnings=constraints["warnings"]
+                constraints["provenance"],warnings=constraints["warnings"],
+                vertical_exaggeration=self.scene_vertical.value(),
+                show_boreholes=self.show_boreholes.isChecked(),
             )
             if self.model_source.currentData() == "local_xyz":
                 # Persist the translation required to reconstruct original
@@ -220,14 +250,17 @@ class ModelToolsMixin:
             self.status.setText(
                 f"3D model created: {len(mesh['faces'])} triangles; "
                 f"{len(mesh['horizons'])-1} volume units. "
-                "Open in ParaView or inspect model.json for assumptions."
+                "Open in ParaView for geological colours, borehole markers "
+                "and per-unit visibility. Distance to nearest well measures "
+                "data coverage, not confidence."
             )
             QMessageBox.information(
                 self,"3D model exported",
                 f"Saved:\n{scene}\n\n"
                 f"Exported {len(mesh['faces'])} triangle cells and "
                 f"{len(mesh['horizons'])-1} geological volume units.\n"
-                "Review model.json before interpreting the result."
+                "The ParaView scene includes unit colours and observed "
+                "contact markers. Review model.json for assumptions."
             )
         except Exception as exc:
             self._error("3D model creation failed",exc)
@@ -276,11 +309,23 @@ class ModelToolsMixin:
             )
             return
         try:
+            presentation = folder / "view_in_paraview.py"
+            # ParaView 6.x GUI accepts --script (official CLI). Older
+            # models without a presentation script still open the VTM.
+            args = (
+                ["--script", str(presentation)]
+                if presentation.is_file()
+                else [str(folder / "model.vtm")]
+            )
             launched, _pid = QProcess.startDetached(
-                executable, [str(folder / "model.vtm")], str(folder)
+                executable, args, str(folder)
             )
             if not launched:
                 raise RuntimeError("ParaView did not start")
-            self.status.setText("Opening selected 3D model in desktop ParaView.")
+            self.status.setText(
+                "Opening ParaView with geological unit colours and "
+                "observed borehole markers." if presentation.is_file()
+                else "Opening legacy VTK model in ParaView."
+            )
         except (OSError, RuntimeError) as exc:
             self._error("Cannot launch ParaView", exc)
