@@ -79,8 +79,13 @@ with tempfile.TemporaryDirectory() as folder:
         dock.open_in_paraview()
         assert len(fake_calls)==1
         executable,args,workdir=fake_calls[-1]
-        assert args==["--script",str(scene_folder/"view_in_paraview.py")],args
+        assert args==["--script",str(scene_folder/"open_with_groundsurf.py")],args
         assert workdir==str(scene_folder)
+        # Launcher sets __file__ even if ParaView's scripting console
+        # executes --script from a Python string without that variable.
+        runner = (scene_folder / "open_with_groundsurf.py").read_text()
+        assert "runpy.run_path" in runner
+        assert "view_in_paraview.py" in runner
         # A legacy saved model without a new style script falls back
         # to its original VTM reader without changing the file.
         (scene_folder/"view_in_paraview.py").rename(

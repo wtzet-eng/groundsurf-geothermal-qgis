@@ -1,11 +1,11 @@
-# GroundSurf Geothermal 0.4.12 — Safe 3D model deletion from QGIS
+# GroundSurf Geothermal 0.4.13 — Separate modelling Studio and reliable ParaView opening
 
 An experimental **local-first QGIS plugin** for managing wells, map layers and a
 versioned geological project database. Version 0.4 adds a **preliminary 3D
 interpolation engine** for shared geological contacts. It is not a validated
 geothermal simulator or professional structural modelling replacement.
 
-## What works in 0.4.12
+## What works in 0.4.13
 
 - Create/open a local **GeoPackage (.gpkg)** project.
 - Store well point geometries (EPSG:4326 WGS84), depths and elevations.
@@ -65,6 +65,38 @@ geothermal simulator or professional structural modelling replacement.
   An unspecified vertical reference allows storage but blocks 3D modelling.
 - Faulted geology, heat-flow and groundwater simulations are **not**
   present in 0.4. Preliminary 3D surfaces are inferred, not observed. Do not make engineering decisions based on this preview.
+
+## Separate modelling Studio and ParaView Shell fix (new in 0.4.13)
+
+QGIS remains the compact launch and import environment. Clicking
+**OPEN STUDIO** opens a larger independent, non-modal GroundSurf
+Modelling Studio window with the same Project Explorer, boreholes,
+Local XYZ/contacts, cross-sections, 3D models and ParaView controls.
+
+**Import from QGIS** automatically opens Studio on the imported-data
+tab after a successful import, so the results are immediately visible.
+The existing splitter and all its tabs are moved, NOT cloned; both
+interfaces share the same single local GeoPackage and source QGIS
+layers. Closing the Studio window returns all tools to the QGIS dock.
+The plugin remains hosted within QGIS (not a standalone EXE).
+
+**ParaView 6.2 NameError: __file__ is not defined** is fixed.
+The Open in ParaView button now launches a tiny runpy-based wrapper
+that supplies the required filename even for previously exported
+0.4.9–0.4.12 conceptual models. Their original VTK geometry, scene
+settings and manifest are unchanged. New 0.4.13 viewer scripts also
+know how to find their folder if ParaView runs them as Python text
+without __file__ and outside the model directory.
+
+For an old model opened manually through ParaView Python Shell,
+the equivalent workaround is:
+
+    import runpy
+    runpy.run_path("/absolute/path/to/view_in_paraview.py",
+                   run_name="__main__")
+
+Prefer GroundSurf 3D Models > Open in ParaView after installing this
+update. Importing the same geological data again is not necessary.
 
 ## Delete selected conceptual models (new in 0.4.12)
 
@@ -625,6 +657,7 @@ QT_QPA_PLATFORM=offscreen PYTHONPATH=. /usr/bin/python3 tools/smoke_paraview_ui_
 QT_QPA_PLATFORM=offscreen PYTHONPATH=. /usr/bin/python3 tools/smoke_import_visibility_v0410.py
 QT_QPA_PLATFORM=offscreen PYTHONPATH=. /usr/bin/python3 tools/smoke_scene_look_v0411.py
 QT_QPA_PLATFORM=offscreen PYTHONPATH=. /usr/bin/python3 tools/smoke_delete_model_v0412.py
+QT_QPA_PLATFORM=offscreen PYTHONPATH=. /usr/bin/python3 tools/smoke_studio_v0413.py
 python3 tools/build_zip.py
 ```
 
