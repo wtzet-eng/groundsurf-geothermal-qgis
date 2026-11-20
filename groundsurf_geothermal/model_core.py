@@ -12,6 +12,7 @@ import json
 import math
 import re
 from html import escape as escape_xml_attribute
+from . import scene_style
 
 METHOD = "IDW horizon elevation (power=2) on subdivided Delaunay triangulation"
 MIN_SEPARATION_M = 0.1
@@ -186,6 +187,21 @@ def build_mesh(wells, horizon_names, subdivisions=10):
         top: min(h[top]-h[bottom] for _,_,h in vertices)
         for top,bottom in zip(horizon_names,horizon_names[1:])
     }
+    # Keep original source-contact positions as a separate overlay.
+    # Never replace the original input Z with interpolated terrain.
+    input_points = [{
+        "well_id": str(well["well_id"]),
+        "x": _finite(well["x"], "well x"),
+        "y": _finite(well["y"], "well y"),
+        "elevations": {
+            h: _finite(well["elevations"][h], "observed contact " + h)
+            for h in horizon_names
+        },
+    } for well in wells]
+    distance_to_nearest_well = [
+        min(math.hypot(x-p["x"], y-p["y"]) for p in input_points)
+        for x,y,_heights in vertices
+    ]
     return {
         "vertices":vertices,
         "faces":faces,
@@ -194,6 +210,8 @@ def build_mesh(wells, horizon_names, subdivisions=10):
         "min_thickness_by_unit_m":thickness,
         "input_wells":len(wells),
         "subdivisions":subdivisions,
+        "input_points":input_points,
+        "distance_to_nearest_well_m":distance_to_nearest_well,
     }
 
 
@@ -213,6 +231,7 @@ def _write_polydata(path, mesh, code):
     <Piece NumberOfPoints="{len(vertices)}" NumberOfPolys="{len(faces)}">
       <PointData Scalars="Elevation_m">
         <DataArray type="Float64" Name="Elevation_m" format="ascii">{_flatten([(p[2],) for p in positions])}</DataArray>
+        <DataArray type="Float64" Name="Distance_to_nearest_well_m" format="ascii">{_flatten([(d,) for d in mesh["distance_to_nearest_well_m"]])}</DataArray>
       </PointData>
       <Points><DataArray type="Float64" NumberOfComponents="3" format="ascii">{_flatten(positions)}</DataArray></Points>
       <Polys>
@@ -236,12 +255,22 @@ def _write_wedges(path, mesh, upper, lower):
     types=" ".join("13" for _ in faces) # VTK_WEDGE=13
     thick=[(sum(vertices[i][2][upper]-vertices[i][2][lower]
                 for i in face)/3,) for face in faces]
+    # This is DATA SUPPORT DISTANCE, NOT statistical confidence.
+    distance=[(
+        min(
+            math.hypot(
+                sum(vertices[i][0] for i in face)/3 - p["x"],
+                sum(vertices[i][1] for i in face)/3 - p["y"]
+            ) for p in mesh["input_points"]
+        ),
+    ) for face in faces]
     payload=f'''<?xml version="1.0"?>
 <VTKFile type="UnstructuredGrid" version="0.1" byte_order="LittleEndian">
   <UnstructuredGrid>
     <Piece NumberOfPoints="{2*n}" NumberOfCells="{len(faces)}">
       <CellData Scalars="Thickness_m">
         <DataArray type="Float64" Name="Thickness_m" format="ascii">{_flatten(thick)}</DataArray>
+        <DataArray type="Float64" Name="Distance_to_nearest_well_m" format="ascii">{_flatten(distance)}</DataArray>
       </CellData>
       <Points><DataArray type="Float64" NumberOfComponents="3" format="ascii">{_flatten(bottom+top)}</DataArray></Points>
       <Cells>
@@ -256,13 +285,97 @@ def _write_wedges(path, mesh, upper, lower):
     Path(path).write_text(payload,encoding="utf-8")
 
 
+def _write_well_observations(folder, mesh):
+    """Write two independent VTK overlays: source sticks and contact points.
+
+    Sticks are schematic vertical line segments, not drilling trajectories.
+    Source contact elevations are not interpolated here.
+    """
+    root=Path(folder)
+    horizons=mesh["horizons"]
+    wells=mesh["input_points"]
+    line_positions=[]
+    line_connections=[]
+    line_offsets=[]
+    for well in wells:
+        first=len(line_positions)
+        top=well["elevations"][horizons[0]]
+        bottom=well["elevations"][horizons[-1]]
+        line_positions.extend([
+            (well["x"],well["y"],top),
+            (well["x"],well["y"],bottom),
+        ])
+        line_connections.extend([first,first+1])
+        line_offsets.append(len(line_connections))
+    lines=f"""<?xml version="1.0"?>
+<VTKFile type="PolyData" version="0.1" byte_order="LittleEndian">
+ <PolyData>
+  <Piece NumberOfPoints="{len(line_positions)}" NumberOfLines="{len(wells)}">
+   <CellData>
+    <DataArray type="Int32" Name="Well_Index" format="ascii">{_flatten([(i,) for i in range(len(wells))])}</DataArray>
+   </CellData>
+   <Points><DataArray type="Float64" NumberOfComponents="3" format="ascii">{_flatten(line_positions)}</DataArray></Points>
+   <Lines>
+    <DataArray type="Int32" Name="connectivity" format="ascii">{" ".join(str(i) for i in line_connections)}</DataArray>
+    <DataArray type="Int32" Name="offsets" format="ascii">{" ".join(str(i) for i in line_offsets)}</DataArray>
+   </Lines>
+  </Piece>
+ </PolyData>
+</VTKFile>
+"""
+    (root/"observed-boreholes.vtp").write_text(lines,encoding="utf-8")
+    contact_positions=[]
+    horizon_idx=[]
+    well_idx=[]
+    for index,well in enumerate(wells):
+        for j,code in enumerate(horizons):
+            contact_positions.append(
+                (well["x"],well["y"],well["elevations"][code])
+            )
+            horizon_idx.append((j,))
+            well_idx.append((index,))
+    n=len(contact_positions)
+    contacts=f"""<?xml version="1.0"?>
+<VTKFile type="PolyData" version="0.1" byte_order="LittleEndian">
+ <PolyData>
+  <Piece NumberOfPoints="{n}" NumberOfVerts="{n}">
+   <PointData Scalars="Horizon_Index">
+    <DataArray type="Int32" Name="Horizon_Index" format="ascii">{_flatten(horizon_idx)}</DataArray>
+    <DataArray type="Int32" Name="Well_Index" format="ascii">{_flatten(well_idx)}</DataArray>
+   </PointData>
+   <Points><DataArray type="Float64" NumberOfComponents="3" format="ascii">{_flatten(contact_positions)}</DataArray></Points>
+   <Verts>
+    <DataArray type="Int32" Name="connectivity" format="ascii">{" ".join(str(i) for i in range(n))}</DataArray>
+    <DataArray type="Int32" Name="offsets" format="ascii">{" ".join(str(i+1) for i in range(n))}</DataArray>
+   </Verts>
+  </Piece>
+ </PolyData>
+</VTKFile>
+"""
+    (root/"observed-contacts.vtp").write_text(contacts,encoding="utf-8")
+    return {
+        "borehole_count":len(wells),
+        "contact_count":n,
+        "boreholes_file":"observed-boreholes.vtp",
+        "contacts_file":"observed-contacts.vtp",
+        "note":"Source-constrained vertical sticks, not measured "
+               "borehole paths or observed ground surface.",
+        "well_indices":[p["well_id"] for p in wells],
+        "horizon_indices":list(horizons),
+    }
+
+
 def _safe_name(name):
     slug = re.sub(r"[^a-zA-Z0-9_-]+","-",str(name)).strip("-").lower()
     return slug[:48] or "model"
 
 
-def export_model(mesh, folder, name, epsg, datum, wells, warnings=()):
-    """Write a ParaView multiblock scene, triangulated horizons and prism volumes."""
+def export_model(mesh, folder, name, epsg, datum, wells, warnings=(),
+                 vertical_exaggeration=1.0, show_boreholes=True):
+    """Write unchanged VTK geology plus optional ParaView appearance script.
+
+    Appearance never modifies source XYZ or alters the base VTK model.
+    """
     root=Path(folder)
     root.mkdir(parents=True,exist_ok=True)
     # Never overwrite unrelated files if an output folder already exists.
@@ -286,13 +399,23 @@ def export_model(mesh, folder, name, epsg, datum, wells, warnings=()):
             f'file="{escape_xml_attribute(file, quote=True)}"/>'
             for i,(label,file) in enumerate(outputs)
         )
+        observed = _write_well_observations(root, mesh)
+        appearance_file, appearance = scene_style.save_appearance(
+            root, mesh, vertical_exaggeration, show_boreholes
+        )
+        # The script runs inside ParaView's Python engine, not inside QGIS.
+        (root/"view_in_paraview.py").write_text(
+            Path(__file__).with_name("paraview_scene.py").read_text(
+                encoding="utf-8"
+            ), encoding="utf-8"
+        )
         (root/"model.vtm").write_text(
             '<?xml version="1.0"?>\n'
             '<VTKFile type="vtkMultiBlockDataSet" version="1.0" byte_order="LittleEndian">\n'
             '<vtkMultiBlockDataSet>\n'+blocks+'\n'
             '</vtkMultiBlockDataSet>\n</VTKFile>\n',encoding="utf-8")
         manifest={
-            "application":"GroundSurf Geothermal", "version":"0.4.8",
+            "application":"GroundSurf Geothermal", "version":"0.4.9",
             "name":str(name), "created_utc":datetime.now(timezone.utc).isoformat(),
             "method":METHOD, "crs":epsg, "vertical_datum":datum,
             "horizons":mesh["horizons"], "subdivisions":mesh["subdivisions"],
@@ -303,6 +426,17 @@ def export_model(mesh, folder, name, epsg, datum, wells, warnings=()):
             "input_wells":wells, "warnings":list(warnings),
             "outputs":[{"label":label,"file":file} for label,file in outputs],
             "scene":"model.vtm",
+            "presentation_script":"view_in_paraview.py",
+            "presentation_settings":appearance_file.name,
+            "colour_by_default":"geological unit identity (categorical)",
+            "source_observations":observed,
+            "display_vertical_exaggeration":appearance["vertical_exaggeration"],
+            "display_warnings":[
+                "Observed contacts and well constraints are shown separately "
+                "from coloured interpolated IDW volumes.",
+                "Distance_to_nearest_well_m is only a spatial data-coverage "
+                "proxy, NOT a confidence probability or uncertainty interval.",
+            ],
             "limitations":[
                 "Preliminary borehole-constrained conceptual interpolation only.",
                 "IDW contact elevation is not a validated geostatistical model.",

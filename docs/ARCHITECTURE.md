@@ -1,4 +1,4 @@
-# GroundSurf Geothermal architecture — v0.4.8
+# GroundSurf Geothermal architecture — v0.4.9
 
 ## Stable boundaries
 
@@ -205,3 +205,43 @@ Model export, output-folder access and ParaView launch share one
 horizontal toolbar, freeing the model catalogue's table viewport.
 A QGIS 3.34/Qt5 offscreen layout smoke test checks navigation,
 expand/collapse behavior, table-row visibility and 640×900 layout.
+
+
+## ParaView presentation layer and data support (0.4.9)
+
+The original `model.vtm`, `surface-*.vtp` and `unit-*.vtu` geometry
+and thickness fields are preserved for compatibility. The modelling
+kernel also attaches `Distance_to_nearest_well_m` as a point array
+on interpolated surfaces and as a cell array on volume wedges.
+
+This numerical variable is *distance to data support*, not geological
+confidence, probability or a stochastic uncertainty result. It is
+not coloured by default and is never described as validated
+uncertainty. It can be selected manually in ParaView for review.
+
+The kernel writes a source-contact overlay as two separate VTK
+PolyData files: `observed-boreholes.vtp` contains schematic
+straight vertical well sticks and `observed-contacts.vtp` contains
+source horizon/contact points. Source Well_ID-to-Well_Index and
+Horizon_Index mappings are in `model.json`. Marker geometries are
+not surveyed borehole traces, and inherited formation top
+coordinates may be derived from recorded intervals.
+
+`scene_style.py` produces stable formation colours using known
+unit labels with deterministic fallback for unfamiliar names.
+`appearance.json` stores categorical colours, vertical exaggeration
+(a *display-only* Transform filter scale), and source marker toggles.
+A self-contained `view_in_paraview.py` is copied to the model
+output folder. The QGIS Open in ParaView command launches
+`paraview --script view_in_paraview.py` when available, or the
+original `model.vtm` for legacy models.
+
+The viewer creates individual toggleable volume sources rather than
+a single aggregate `Thickness_m (partial)` colour map. Observations
+are separate sources. Interpolated horizon overlays are loaded
+hidden by default to avoid z-fighting with volume faces. Colour
+legend and an oblique camera are created by the ParaView-side script,
+not the QGIS process. QGIS requires no ParaView Python package.
+
+A synthetic headless ParaView 6.2.0 test opens the script and renders
+an offscreen scene; the previous QGIS 3/Qt5 tests remain.
