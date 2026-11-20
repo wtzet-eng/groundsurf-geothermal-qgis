@@ -483,13 +483,22 @@ class ModelToolsMixin:
             return
         try:
             presentation = folder / "view_in_paraview.py"
-            # ParaView 6.x GUI accepts --script (official CLI). Older
-            # models without a presentation script still open the VTM.
-            args = (
-                ["--script", str(presentation)]
-                if presentation.is_file()
-                else [str(folder / "model.vtm")]
-            )
+            # ParaView 6.x GUI and Python Shell may execute scripts
+            # without __file__. A runpy wrapper deliberately sets
+            # __file__ for previously exported 0.4.9–0.4.12 scripts.
+            # No old geological geometry or manifest is altered.
+            if presentation.is_file():
+                runner = folder / "open_with_groundsurf.py"
+                runner.write_text(
+                    "import runpy\n"
+                    "runpy.run_path("
+                    + repr(str(presentation.resolve()))
+                    + ", run_name='__main__')\n",
+                    encoding="utf-8",
+                )
+                args = ["--script", str(runner)]
+            else:
+                args = [str(folder / "model.vtm")]
             launched, _pid = QProcess.startDetached(
                 executable, args, str(folder)
             )

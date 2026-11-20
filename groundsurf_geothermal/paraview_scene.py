@@ -111,8 +111,40 @@ def _legend_item(view, line, colour, index, count):
         print("[GroundSurf] Legend text unavailable:", exc)
 
 
+def _find_scene_folder():
+    """Resolve model data even when ParaView Python Shell has no __file__.
+
+    ParaView GUI --script or Python Shell Run Script may execute code as a
+    string. Older viewers raised NameError on __file__. New exports
+    embed a source-folder fallback; normal script execution and launch
+    wrappers remain relocatable.
+    """
+    candidate_paths = []
+    script_name = globals().get("__file__")
+    if script_name:
+        candidate_paths.append(Path(script_name).expanduser().resolve().parent)
+    generated = globals().get("GROUNDSURF_EXPORT_FOLDER")
+    if generated:
+        # An embedded model path is more reliable than arbitrary CWD,
+        # which may refer to a different saved geological model.
+        candidate_paths.append(Path(generated).expanduser().resolve())
+    candidate_paths.append(Path.cwd())
+    for folder in candidate_paths:
+        if (
+            (folder / "model.json").is_file()
+            and (folder / "appearance.json").is_file()
+        ):
+            return folder
+    raise RuntimeError(
+        "Cannot locate the GroundSurf model.json and appearance.json "
+        "files. Open the model using QGIS → GroundSurf → "
+        "3D Models → Open in ParaView, or run the script from "
+        "its model output folder."
+    )
+
+
 def main():
-    here = Path(__file__).resolve().parent
+    here = _find_scene_folder()
     scene = json.loads((here / "appearance.json").read_text(encoding="utf-8"))
     model = json.loads((here / "model.json").read_text(encoding="utf-8"))
     by_label = {

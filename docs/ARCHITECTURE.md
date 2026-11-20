@@ -1,4 +1,4 @@
-# GroundSurf Geothermal architecture — v0.4.12
+# GroundSurf Geothermal architecture — v0.4.13
 
 ## Stable boundaries
 
@@ -315,3 +315,28 @@ names, Trash opt-in, failed Trash preserving the catalogue, unsafe
 folder rejection, duplicate-output and symlink guards, and
 preservation of geological contacts and all other model folders.
 Qt5 `QFile.moveToTrash` support was confirmed on the test system.
+
+
+## One shared QGIS dock and independent modelling Studio (0.4.13)
+
+GeothermalDock remains the sole owner of the local GeoPackage,
+QGIS map layers, explorer and tabs. On demand, a non-modal
+GeothermalStudioWindow moves the existing explorer splitter to a
+large independent window; it does not clone widgets or data.
+Successful QGIS imports automatically open Studio on their matching
+tab. Closing Studio reparents the splitter to its original QGIS
+dock layout, including when the plugin is unloaded. A theme change
+propagates to the detached Studio.
+
+## Resilient ParaView execution when __file__ is undefined (0.4.13)
+
+ParaView GUI Python Shell and --script can evaluate strings without
+__file__. A small open_with_groundsurf.py wrapper uses runpy.run_path
+with the saved scene file's absolute path, so legacy 0.4.9–0.4.12
+scene scripts receive the expected filename without source edits.
+
+New exports embed their original model directory as fallback. The
+scene resolver tries real __file__, working directory and embedded
+folder. No geometric model or geological observations are changed.
+Real ParaView 6.2.0 pvpython tests run both old and new scripts from
+an unrelated current directory with caller __file__ absent.

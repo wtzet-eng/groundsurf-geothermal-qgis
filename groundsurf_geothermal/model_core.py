@@ -408,10 +408,19 @@ def export_model(mesh, folder, name, epsg, datum, wells, warnings=(),
             show_orientation=show_orientation, show_bounds=show_bounds,
         )
         # The script runs inside ParaView's Python engine, not inside QGIS.
+        scene_code = Path(__file__).with_name(
+            "paraview_scene.py"
+        ).read_text(encoding="utf-8")
+        # ParaView Python Shell sometimes executes a script as a string,
+        # without defining __file__ or setting its working directory.
+        # Recording the model folder is a reliable fallback; normal
+        # script execution still uses its relocatable __file__ path.
+        scene_code = (
+            "GROUNDSURF_EXPORT_FOLDER = " + repr(str(root.resolve()))
+            + "\n" + scene_code
+        )
         (root/"view_in_paraview.py").write_text(
-            Path(__file__).with_name("paraview_scene.py").read_text(
-                encoding="utf-8"
-            ), encoding="utf-8"
+            scene_code, encoding="utf-8"
         )
         (root/"model.vtm").write_text(
             '<?xml version="1.0"?>\n'
@@ -419,7 +428,7 @@ def export_model(mesh, folder, name, epsg, datum, wells, warnings=(),
             '<vtkMultiBlockDataSet>\n'+blocks+'\n'
             '</vtkMultiBlockDataSet>\n</VTKFile>\n',encoding="utf-8")
         manifest={
-            "application":"GroundSurf Geothermal", "version":"0.4.12",
+            "application":"GroundSurf Geothermal", "version":"0.4.13",
             "name":str(name), "created_utc":datetime.now(timezone.utc).isoformat(),
             "method":METHOD, "crs":epsg, "vertical_datum":datum,
             "horizons":mesh["horizons"], "subdivisions":mesh["subdivisions"],

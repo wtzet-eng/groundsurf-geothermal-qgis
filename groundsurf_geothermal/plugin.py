@@ -1,4 +1,4 @@
-"""GroundSurf Geothermal 0.4.12: local and mapped geological workspace."""
+"""GroundSurf Geothermal 0.4.13: local and mapped geological workspace."""
 import os
 from pathlib import Path
 
@@ -48,6 +48,7 @@ class GroundSurfGeothermalPlugin:
 
     def unload(self):
         if self.dock is not None:
+            self.dock.close_studio()
             if getattr(self.dock, "_section_window", None):
                 self.dock._section_window.close()
             for layer_id in getattr(self.dock, "_preview_line_ids", {}).values():
@@ -61,6 +62,41 @@ class GroundSurfGeothermalPlugin:
             self.dock = None
 
 
+class _GeothermalStudioWindow(QDialog):
+    """One independent modelling window, using the dock's live widgets.
+
+    We reparent the existing splitter rather than cloning state. Imported
+    source data and all tab connections belong to one GeothermalDock.
+    Closing the window returns the unchanged workspace to that dock.
+    """
+
+    def __init__(self, owner):
+        super().__init__(owner.iface.mainWindow(), Qt.WindowType.Window)
+        self.owner = owner
+        self.setWindowTitle("GroundSurf Geothermal · Modelling Studio")
+        self.setObjectName("GroundSurfGeothermalStudio")
+        self.setAttribute(Qt.WidgetAttribute.WA_DeleteOnClose, True)
+        self.setMinimumSize(690, 465)
+        self.resize(1080, 760)
+        layout = QVBoxLayout(self)
+        layout.setContentsMargins(10, 10, 10, 10)
+        self.heading = QLabel("GROUNDSURF  /  GEOLOGICAL STUDIO")
+        self.heading.setObjectName("gsHeading")
+        layout.addWidget(self.heading)
+        subtitle = QLabel(
+            "Your QGIS layers remain in QGIS. Import, model and inspect "
+            "the same local GroundSurf project here."
+        )
+        subtitle.setWordWrap(True)
+        layout.addWidget(subtitle)
+        # The live splitter is inserted by GeothermalDock.open_studio().
+        self.workspace_layout = layout
+
+    def closeEvent(self, event):
+        self.owner._restore_studio_workspace()
+        super().closeEvent(event)
+
+
 class GeothermalDock(ContactToolsMixin, ModelToolsMixin,
                      SectionToolsMixin, WellManagerMixin, QDockWidget):
     def __init__(self, iface, parent=None):
@@ -71,6 +107,7 @@ class GeothermalDock(ContactToolsMixin, ModelToolsMixin,
         self.map_layer_ids = []
         self.map_registry = {}
         self._preview_line_ids = {}
+        self._studio_window = None
         self.settings = QSettings("GroundSurf", "Geothermal")
         self.theme = self.settings.value("theme", "dark")
         self.setObjectName("GroundSurfGeothermalDock")
@@ -89,6 +126,7 @@ class GeothermalDock(ContactToolsMixin, ModelToolsMixin,
         content = QWidget()
         self.setWidget(content)
         outer = QVBoxLayout(content)
+        self.main_layout = outer
         outer.setContentsMargins(9, 8, 9, 8)
         outer.setSpacing(5)
         heading = QLabel("GroundSurf  /  GEOTHERMAL")
@@ -106,11 +144,11 @@ class GeothermalDock(ContactToolsMixin, ModelToolsMixin,
         self.import_qgis_button = QPushButton("Import from QGIS")
         self.import_qgis_button.clicked.connect(self.import_from_qgis)
         primary.addWidget(self.import_qgis_button, 0, 0)
-        self.models_shortcut = QPushButton("3D MODELS  →")
+        self.models_shortcut = QPushButton("OPEN STUDIO  ↗")
         self.models_shortcut.setObjectName("gsModelsShortcut")
         self.models_shortcut.setToolTip(
-            "Open the geological 3D model workspace. "
-            "Build conceptual surfaces and export to ParaView."
+            "Open a separate, resizable modelling window. Your "
+            "source layers, imported records and QGIS project stay intact."
         )
         self.models_shortcut.clicked.connect(self.open_models)
         primary.addWidget(self.models_shortcut, 0, 1)
@@ -199,7 +237,7 @@ class GeothermalDock(ContactToolsMixin, ModelToolsMixin,
         self.info = QTextEdit()
         self.info.setReadOnly(True)
         self.info.setPlainText(
-            "GroundSurf Geothermal 0.4.12\n\n"
+            "GroundSurf Geothermal 0.4.13\n\n"
             "Local GeoPackage projects and WGS84 well locations.\n"
             "Depths: metres, positive downward.\n"
             "Elevations: metres, datum supplied by user.\n\n"
@@ -246,6 +284,7 @@ class GeothermalDock(ContactToolsMixin, ModelToolsMixin,
         splitter.setStretchFactor(0, 1)
         splitter.setStretchFactor(1, 3)
         splitter.setSizes([170, 420])
+        self.workspace_home_index = outer.count()
         outer.addWidget(splitter, 1)
 
         self.status = QLabel("Offline by design · No cloud data transfer")
@@ -306,6 +345,9 @@ class GeothermalDock(ContactToolsMixin, ModelToolsMixin,
                 QTabBar::tab { background:#e8f1eb; padding:7px; }
                 QTabBar::tab:selected { background:#c2dfca; }
             """)
+        if self._studio_window is not None:
+            # The workspace is detached and no longer inherits dock CSS.
+            self._studio_window.setStyleSheet(self.widget().styleSheet())
 
     def _toggle_more_tools(self, shown):
         self.extra_actions.setVisible(bool(shown))
@@ -314,12 +356,50 @@ class GeothermalDock(ContactToolsMixin, ModelToolsMixin,
         )
         self.settings.setValue("show_more_tools", bool(shown))
 
+    def open_studio(self):
+        """Detach the *same* explorer and tabs into a larger window."""
+        if self._studio_window is not None:
+            self._studio_window.show()
+            self._studio_window.raise_()
+            self._studio_window.activateWindow()
+            return
+        studio = _GeothermalStudioWindow(self)
+        self._studio_window = studio
+        self.explorer_splitter.setParent(studio)
+        studio.workspace_layout.addWidget(self.explorer_splitter, 1)
+        self.explorer_splitter.show()
+        studio.setStyleSheet(self.widget().styleSheet())
+        studio.show()
+        studio.raise_()
+        studio.activateWindow()
+        # Preserve the preceding import/model status text. The Studio
+        # opens without replacing the success message in the QGIS dock.
+
+    def _restore_studio_workspace(self):
+        """Put the real QGIS tabs back; never create duplicate editors."""
+        studio = self._studio_window
+        if studio is None:
+            return
+        self._studio_window = None
+        self.explorer_splitter.setParent(self.widget())
+        self.main_layout.insertWidget(
+            self.workspace_home_index, self.explorer_splitter, 1
+        )
+        self.explorer_splitter.show()
+
+    def close_studio(self):
+        """Called on QGIS plugin unload and by the normal close button."""
+        if self._studio_window is not None:
+            self._studio_window.close()
+
     def open_models(self):
-        """One click from main controls to the visible 3D model workspace."""
+        """Direct shortcut to the 3D tab in independent Studio window."""
         self.tabs.setCurrentWidget(self.model_tab)
+        self.open_studio()
 
     def open_help(self):
         self.tabs.setCurrentIndex(self.help_tab_index)
+        self.open_studio()
 
     def toggle_theme(self):
         self.theme = "light" if self.theme == "dark" else "dark"
@@ -695,6 +775,10 @@ class GeothermalDock(ContactToolsMixin, ModelToolsMixin,
                     f"Linked QGIS map '{layer.name()}' without duplicating "
                     "or changing the original layer."
                 )
+            # After a successful QGIS import/link, show the result in a
+            # dedicated, larger window (already on the selected tab).
+            # No duplicate storage is created by this UI operation.
+            self.open_studio()
         except Exception as exc:
             self._error("Import from QGIS failed", exc)
 
