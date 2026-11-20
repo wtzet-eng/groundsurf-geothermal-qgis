@@ -1,4 +1,4 @@
-"""GroundSurf Geothermal 0.4.2: wells, maps and local project workspace."""
+"""GroundSurf Geothermal 0.4.7: local and mapped geological workspace."""
 import os
 from pathlib import Path
 
@@ -19,7 +19,7 @@ from .well_manager import WellManagerMixin
 from .section_ui import SectionToolsMixin
 from .model_ui import ModelToolsMixin
 from .contact_ui import ContactToolsMixin
-from . import sections, models, elevation_contacts, elevation_import
+from . import sections, models, elevation_contacts, elevation_import, local_xyz
 from .qgis_import import ImportFromQGISDialog, file_backed_map, import_wells
 from . import grouped_import
 
@@ -148,7 +148,7 @@ class GeothermalDock(ContactToolsMixin, ModelToolsMixin,
         self.info = QTextEdit()
         self.info.setReadOnly(True)
         self.info.setPlainText(
-            "GroundSurf Geothermal 0.4.6\n\n"
+            "GroundSurf Geothermal 0.4.7\n\n"
             "Local GeoPackage projects and WGS84 well locations.\n"
             "Depths: metres, positive downward.\n"
             "Elevations: metres, datum supplied by user.\n\n"
@@ -300,6 +300,9 @@ class GeothermalDock(ContactToolsMixin, ModelToolsMixin,
         contact_backup = elevation_contacts.ensure_schema(
             path, backup_existing=True
         )
+        local_backup = local_xyz.ensure_schema(
+            path, backup_existing=True
+        )
         if self._section_window is not None:
             self._section_window.close()
             self._section_window = None
@@ -339,7 +342,7 @@ class GeothermalDock(ContactToolsMixin, ModelToolsMixin,
             except Exception:
                 missing += 1
         self.refresh()
-        if backup or model_backup or contact_backup:
+        if backup or model_backup or contact_backup or local_backup:
             self.status.setText(
                 "New modelling tables installed; database backups saved locally."
             )
@@ -475,6 +478,52 @@ class GeothermalDock(ContactToolsMixin, ModelToolsMixin,
                     f"and {interval_count} log intervals from "
                     f"{staged['source_rows']} source records. "
                     "Original QGIS layer unchanged."
+                )
+            elif selection["mode"] == "local_xyz":
+                if not selection.get("local_metre_confirmed"):
+                    raise ValueError(
+                        "Confirm X, Y and Z metre units first. "
+                        "A local Cartesian model has NO geographic location."
+                    )
+                staged = local_xyz.prepare_local(
+                    layer, selection["fields"],
+                    use_xy_fields=selection["use_xy_fields"],
+                    use_geometry_z=selection["use_geometry_z"],
+                    vertical_reference=selection["vertical_datum"],
+                    selected_only=selection["selected_only"],
+                )
+                prompt=(
+                    f"Save {staged['contact_count']} local XYZ source records "
+                    f"for {staged['well_count']} boreholes in GroundSurf?\n\n"
+                    "X, Y and Z are TREATED AS METRES without a geographic "
+                    "CRS. No longitude/latitude is generated.\n"
+                    "These data will appear under Local XYZ, NOT the "
+                    "world-map Wells or Z Contacts layers.\n"
+                    "The original QGIS layer stays unchanged.\n\n"
+                    + "\n".join(staged["warnings"][:9])
+                )
+                if QMessageBox.question(
+                    self, "Confirm UNLOCATED local XYZ import", prompt,
+                    QMessageBox.StandardButton.Yes
+                    | QMessageBox.StandardButton.No,
+                    QMessageBox.StandardButton.No,
+                ) != QMessageBox.StandardButton.Yes:
+                    return
+                batch_id=local_xyz.store_batch(self.path,staged)
+                self.refresh()
+                index=self.local_batch_combo.findData(batch_id)
+                if index >= 0:
+                    self.local_batch_combo.setCurrentIndex(index)
+                self.model_source.setCurrentIndex(
+                    self.model_source.findData("local_xyz")
+                )
+                self.tabs.setCurrentWidget(self.local_xyz_tab)
+                self.status.setText(
+                    f"LOCAL XYZ dataset {batch_id}: "
+                    f"{staged['well_count']} unlocated boreholes, "
+                    f"{staged['contact_count']} source contacts saved. "
+                    "No geographic CRS assigned. Use 3D Models to "
+                    "export a local-metre ParaView scene."
                 )
             elif selection["mode"] == "contacts":
                 staged = elevation_import.prepare_contacts(
@@ -687,6 +736,7 @@ class GeothermalDock(ContactToolsMixin, ModelToolsMixin,
         well_root = QTreeWidgetItem(self.tree, ["Wells"])
         map_root = QTreeWidgetItem(self.tree, ["Maps"])
         QTreeWidgetItem(self.tree, ["Z Contacts · geological elevations"])
+        QTreeWidgetItem(self.tree, ["Local XYZ · unlocated metre data"])
         QTreeWidgetItem(self.tree, ["3D Models · preliminary"])
         self.wells_table.setRowCount(0)
         self.maps_table.setRowCount(0)
@@ -696,6 +746,7 @@ class GeothermalDock(ContactToolsMixin, ModelToolsMixin,
             self.refresh_sections()
             self.refresh_models()
             self.refresh_contacts()
+            self.refresh_local_xyz()
             return
         for well in self.well_layer.getFeatures():
             code = str(well["well_id"])
@@ -726,6 +777,7 @@ class GeothermalDock(ContactToolsMixin, ModelToolsMixin,
         self.refresh_sections()
         self.refresh_models()
         self.refresh_contacts()
+        self.refresh_local_xyz()
 
     def _tree_selected(self, item, column):
         self.status.setText("Selected: " + item.text(0))

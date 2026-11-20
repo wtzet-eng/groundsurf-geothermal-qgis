@@ -5,7 +5,7 @@ from qgis.core import (
     QgsFeature, QgsField, QgsGeometry, QgsPointXY, QgsProject,
     QgsVectorFileWriter, QgsVectorLayer,
 )
-from . import db, sections, models, elevation_contacts
+from . import db, sections, models, elevation_contacts, local_xyz
 
 LAYER_NAME = "gs_wells"
 FIELDS = (
@@ -38,6 +38,7 @@ def create_project(path):
     sections.ensure_schema(path, backup_existing=False)
     models.ensure_schema(path, backup_existing=False)
     elevation_contacts.ensure_schema(path, backup_existing=False)
+    local_xyz.ensure_schema(path, backup_existing=False)
     if not db.valid_project(path):
         raise RuntimeError("GeoPackage schema verification failed")
     return path

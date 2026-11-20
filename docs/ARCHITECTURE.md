@@ -1,4 +1,4 @@
-# GroundSurf Geothermal architecture — v0.4.6
+# GroundSurf Geothermal architecture — v0.4.7
 
 ## Stable boundaries
 
@@ -159,3 +159,32 @@ All generated models retain provenance, warn about conceptual IDW
 interpolation, and cannot be interpreted as faulted geology or thermal flow
 solutions without independent validation. Contact Z and borehole interval
 depth modes remain separate.
+
+
+## Unlocated source XYZ in metres (0.4.7)
+
+Source QGIS point geometry may be stored in a local engineering frame
+or have an erroneous EPSG:4326 layer declaration while X/Y are
+numerically metre-like. **Never create fake longitude/latitude**
+from such a source. A separate `gs_local_xyz_batches` and
+`gs_local_xyz_contacts` schema stores the original user-confirmed
+metre XYZ values, borehole identity, geological unit name, input layer
+and original feature IDs. No `gs_wells`/WGS84 point is fabricated.
+
+Each local dataset is an independent batch, so two unrelated local
+coordinate frames are never silently combined. The import wizard uses
+an explicit metre-units checkbox with an unknown-CRS label, and keeps
+the raw source layer untouched. It can still be used if a later GIS
+CRS determination is not possible.
+
+Local models use the original X/Y differences directly (metre
+assumption) and shift a common planar origin to near (0,0). The
+translated VTK scene retains user-provided source Z heights.
+`model.json` records the reversible X/Y origin, original source
+coordinates and a strong `georeferenced: false` label, while the
+model catalogue stores `LOCAL_XYZ_METRES_UNGEOREFERENCED`.
+Ambiguous repeated unit heights are excluded from the model but
+preserved in the contact store. These scenes must never be overlaid
+on a geographic QGIS map without independently verifying the source
+CRS and proper horizontal transformation. Translating Web Mercator
+coordinates is not a correction for its map-scale distortion.

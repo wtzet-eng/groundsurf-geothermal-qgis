@@ -428,6 +428,12 @@ class ImportFromQGISDialog(QDialog):
         contact_form.addRow("Vertical reference / datum", self.vertical_reference)
         self.contact_selected_only = QCheckBox("Import selected records only")
         contact_form.addRow(self.contact_selected_only)
+        self.local_confirm = QCheckBox(
+            "I confirm source X, Y and Z are in metres and belong to ONE "
+            "local engineering coordinate frame"
+        )
+        self.local_confirm.setChecked(False)
+        contact_form.addRow(self.local_confirm)
         contact_note = QLabel(
             "Z means contact ELEVATION, not depth below ground. "
             "Repeated IDs form individual wells. Duplicate unit names "
@@ -471,8 +477,10 @@ class ImportFromQGISDialog(QDialog):
         )
 
     def _contact_selection(self):
+        mode = self.mode_combo.currentData()
         return {
-            "mode": "contacts",
+            "mode": "local_xyz" if mode == "local_xyz" else "contacts",
+            "local_metre_confirmed":self.local_confirm.isChecked(),
             "layer": self.selected_layer(),
             "fields": {
                 name: combo.currentData()
@@ -500,6 +508,10 @@ class ImportFromQGISDialog(QDialog):
                 "Import PointZ geological contact elevations (ID / X / Y / Z / Strata)",
                 "contacts",
             )
+            self.mode_combo.addItem(
+                "Import local XYZ metres (NO map CRS; usable in ParaView)",
+                "local_xyz",
+            )
             from . import elevation_import
             fields = elevation_import.detect_fields(
                 [f.name() for f in layer.fields()]
@@ -526,7 +538,18 @@ class ImportFromQGISDialog(QDialog):
                     if candidate:
                         seen.add(candidate)
         self.mode_combo.addItem("Link existing map source (no data copied)", "map")
-        if is_contacts:
+        # If the layer *declares* geographic degrees but X/Y are out of
+        # range, suggest a local engineering workflow. Do not infer that
+        # its coordinates really are metres: confirmation remains required.
+        likely_local = False
+        if is_contacts and layer.crs().isValid() and layer.crs().isGeographic():
+            first = next(layer.getFeatures(), None)
+            if first is not None:
+                p = first.geometry().asPoint()
+                likely_local = abs(p.x()) > 180 or abs(p.y()) > 90
+        if likely_local:
+            self.mode_combo.setCurrentIndex(self.mode_combo.findData("local_xyz"))
+        elif is_contacts:
             self.mode_combo.setCurrentIndex(self.mode_combo.findData("contacts"))
         elif grouped:
             self.mode_combo.setCurrentIndex(self.mode_combo.findData("grouped"))
@@ -543,11 +566,13 @@ class ImportFromQGISDialog(QDialog):
             return
         mode = self.mode_combo.currentData()
         is_group = mode == "grouped"
-        is_contacts = mode == "contacts"
+        is_local_xyz = mode == "local_xyz"
+        is_contacts = mode == "contacts" or is_local_xyz
         is_wells = mode in ("wells", "grouped")
-        self.source_crs.setVisible(is_wells or is_contacts)
-        self.crs_note.setVisible(is_wells or is_contacts)
+        self.source_crs.setVisible(is_wells or mode == "contacts")
+        self.crs_note.setVisible(is_wells or mode == "contacts")
         self.well_tabs.setVisible(is_wells or is_contacts)
+        self.local_confirm.setVisible(is_local_xyz)
         self.well_tabs.setTabEnabled(0, is_wells)
         self.well_tabs.setTabEnabled(1, is_group)
         self.well_tabs.setTabEnabled(2, is_contacts)
@@ -557,8 +582,9 @@ class ImportFromQGISDialog(QDialog):
             self.well_tabs.setCurrentIndex(0)
         self.preview_button.setVisible(is_group or is_contacts)
         self.preview_button.setText(
-            "Preview contact elevations" if is_contacts
-            else "Preview grouped boreholes"
+            ("Preview LOCAL XYZ (no CRS)" if is_local_xyz
+             else "Preview contact elevations" if is_contacts
+             else "Preview grouped boreholes")
         )
         self.group_summary.setVisible(is_group or is_contacts)
         self.group_summary.setText("")
@@ -580,9 +606,17 @@ class ImportFromQGISDialog(QDialog):
             self.use_xy_fields.setChecked(False)
             self._update_contact_fields()
             self.details.setText(
-                f"{layer.featureCount()} QGIS contact records. "
-                "One well per unique ID; Z values are ELEVATIONS. "
-                "Choose the actual source horizontal CRS below before importing."
+                (
+                    "LOCAL CARTESIAN ONLY: source X/Y/Z are used as metre "
+                    "values. No world-map position is created, and no CRS "
+                    "transformation is applied. Confirm units below. "
+                    "Boreholes and contacts will appear in GroundSurf's "
+                    "Local XYZ tab and can drive a ParaView 3D model."
+                ) if is_local_xyz else (
+                    f"{layer.featureCount()} QGIS contact records. "
+                    "One well per unique ID; Z values are ELEVATIONS. "
+                    "Choose the actual source horizontal CRS before importing."
+                )
             )
         elif is_wells:
             names = [f.name() for f in layer.fields()]
@@ -648,9 +682,45 @@ class ImportFromQGISDialog(QDialog):
 
     def preview_groups(self):
         from . import grouped_import, elevation_import
-        is_contacts = self.mode_combo.currentData() == "contacts"
+        is_contacts = self.mode_combo.currentData() in ("contacts","local_xyz")
         data = self._contact_selection() if is_contacts else self._group_selection()
         try:
+            if data["mode"] == "local_xyz":
+                from . import local_xyz
+                if not data["local_metre_confirmed"]:
+                    raise ValueError(
+                        "Confirm that X, Y and Z are measured in metres "
+                        "before using local Cartesian mode. "
+                        "Without a verified source CRS, no geographic "
+                        "map position is known."
+                    )
+                staged = local_xyz.prepare_local(
+                    data["layer"], data["fields"],
+                    use_xy_fields=data["use_xy_fields"],
+                    use_geometry_z=data["use_geometry_z"],
+                    vertical_reference=data["vertical_datum"],
+                    selected_only=data["selected_only"],
+                )
+                examples="\n".join(
+                    f"  {well}: {num} source contact(s)"
+                    for well,num in sorted(staged["counts"].items())[:12]
+                )
+                message=(
+                    f"{staged['contact_count']} raw XYZ rows → "
+                    f"{staged['well_count']} unlocated boreholes.\n"
+                    + examples
+                    + "\n\n"
+                    + "\n".join(staged["warnings"][:16])
+                )
+                self.group_summary.setText(
+                    f"Local Cartesian: {staged['well_count']} boreholes; "
+                    f"{staged['contact_count']} Z contacts. "
+                    "NO WORLD-MAP LOCATION."
+                )
+                QMessageBox.information(
+                    self, "Local XYZ preview (no geographic CRS)", message
+                )
+                return
             if is_contacts:
                 staged = elevation_import.prepare_contacts(
                     data["layer"], data["fields"],
@@ -715,7 +785,7 @@ class ImportFromQGISDialog(QDialog):
         layer = self.selected_layer()
         if layer is None or not layer.isValid():
             raise ValueError("Selected QGIS layer is no longer available")
-        if self.mode_combo.currentData() == "contacts":
+        if self.mode_combo.currentData() in ("contacts","local_xyz"):
             return self._contact_selection()
         if self.mode_combo.currentData() == "grouped":
             return self._group_selection()

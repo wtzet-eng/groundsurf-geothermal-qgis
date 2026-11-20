@@ -105,6 +105,11 @@ with tempfile.TemporaryDirectory() as td:
     # The user must select the true CRS (EPSG:3857 here only as test data).
     test_crs = QgsCoordinateReferenceSystem("EPSG:3857")
     dialog = ImportFromQGISDialog(preferred_layer_id=source.id())
+    # v0.4.7 now proposes local-metre mode for misleading EPSG:4326
+    # source coordinates. Explicitly choose original geographic import
+    # for this older regression test of a known source-CRS override.
+    assert dialog.mode_combo.currentData() == "local_xyz"
+    dialog.mode_combo.setCurrentIndex(dialog.mode_combo.findData("contacts"))
     assert dialog.mode_combo.currentData() == "contacts"
     assert dialog.contact_fields["formation_code"].currentData() == "Strata"
     assert dialog.contact_fields["well_id"].currentData() == "ID"
