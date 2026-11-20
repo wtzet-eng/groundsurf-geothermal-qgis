@@ -1,4 +1,4 @@
-# GroundSurf Geothermal architecture — v0.4.9
+# GroundSurf Geothermal architecture — v0.4.10
 
 ## Stable boundaries
 
@@ -245,3 +245,23 @@ not the QGIS process. QGIS requires no ParaView Python package.
 
 A synthetic headless ParaView 6.2.0 test opens the script and renders
 an offscreen scene; the previous QGIS 3/Qt5 tests remain.
+
+
+## Reliable QGIS import navigation (0.4.10)
+
+The v0.4.8 modeller-first tab reorder invalidated hard-coded
+`setCurrentIndex(0/1)` destinations used by normal well/group
+and map import handlers. Import still wrote data correctly, but
+opened the wrong tabs. The handlers now use stable widget identity
+(`setCurrentWidget(self.wells_table / self.maps_table)`) instead.
+
+The QGIS import dialogue's construction and exec step are now under
+the same user-facing exception boundary as the import transaction,
+with local QGIS Message Log diagnostics tagged
+`GroundSurf Geothermal`. Invalid/null first feature geometry no
+longer crashes automatic source-CRS-mode suggestions.
+
+The Project Explorer summarises unlocated XYZ dataset sizes from
+the local GeoPackage; the stored data, source coordinate frames,
+georeferenced Wells, georeferenced Z Contacts and local unlocated
+batch tables remain wholly separate and unchanged.

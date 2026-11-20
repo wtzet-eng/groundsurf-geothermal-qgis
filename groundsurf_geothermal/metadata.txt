@@ -2,8 +2,8 @@
 name=GroundSurf Geothermal
 qgisMinimumVersion=3.34
 qgisMaximumVersion=3.99
-description=Import QGIS XYZ/boreholes and explore colour-coded conceptual 3D geology with ParaView.
-version=0.4.9
+description=Import QGIS boreholes with visible saved-record counts and colour-coded 3D ParaView geology.
+version=0.4.10
 author=GroundSurf
 email=tzuk.ls@outlook.com
 about=Experimental offline QGIS 3.34+ workbench. Import PointZ ID/X/Y/Z/Strata from open QGIS; correct a known source CRS for mapped work, OR keep metre XYZ in an explicitly ungeoreferenced local project dataset and export to ParaView with stable geological colours, source-contact markers and data-coverage distance. Store contact elevations separately from well-log depths. Preliminary IDW 3D only. Built-in Python standard library only; external ParaView is optional for 3D viewing. No validated geothermal simulation or server transfer. Feedback: tzuk.ls@outlook.com. Tutorials: https://www.youtube.com/@Ground-Surf.

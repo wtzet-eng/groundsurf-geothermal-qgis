@@ -1,4 +1,4 @@
-"""GroundSurf Geothermal 0.4.9: local and mapped geological workspace."""
+"""GroundSurf Geothermal 0.4.10: local and mapped geological workspace."""
 import os
 from pathlib import Path
 
@@ -11,8 +11,8 @@ from qgis.PyQt.QtWidgets import (
     QTreeWidgetItem, QVBoxLayout, QWidget,
 )
 from qgis.core import (
-    QgsCoordinateTransform, QgsMarkerSymbol, QgsProject, QgsProviderRegistry, QgsRasterLayer,
-    QgsVectorLayer,
+    Qgis, QgsCoordinateTransform, QgsMarkerSymbol, QgsMessageLog, QgsProject,
+    QgsProviderRegistry, QgsRasterLayer, QgsVectorLayer,
 )
 from . import db, storage
 from .well_manager import WellManagerMixin
@@ -199,7 +199,7 @@ class GeothermalDock(ContactToolsMixin, ModelToolsMixin,
         self.info = QTextEdit()
         self.info.setReadOnly(True)
         self.info.setPlainText(
-            "GroundSurf Geothermal 0.4.9\n\n"
+            "GroundSurf Geothermal 0.4.10\n\n"
             "Local GeoPackage projects and WGS84 well locations.\n"
             "Depths: metres, positive downward.\n"
             "Elevations: metres, datum supplied by user.\n\n"
@@ -327,7 +327,11 @@ class GeothermalDock(ContactToolsMixin, ModelToolsMixin,
         self._set_theme()
 
     def _error(self, title, exc):
-        self.status.setText(f"{title}: {exc}")
+        message = f"{title}: {exc}"
+        self.status.setText(message)
+        # GroundSurf's own diagnostics persist in QGIS's Message Log,
+        # instead of leaving only the unhelpful generic "Python error".
+        QgsMessageLog.logMessage(message, "GroundSurf Geothermal", Qgis.MessageLevel.Warning)
         QMessageBox.warning(self, title, str(exc))
 
     def _require_project(self):
@@ -431,11 +435,24 @@ class GeothermalDock(ContactToolsMixin, ModelToolsMixin,
             self.status.setText(
                 "New modelling tables installed; database backups saved locally."
             )
-        self.status.setText(
-            f"Project opened. {missing} map source(s) missing or unreadable. "
-            "Select a map row and use Relink map." if missing else
-            "Project opened. Local geology and observation tables are ready."
-        )
+        batches = local_xyz.list_batches(path)
+        if batches:
+            count_contacts = sum(record[7] for record in batches)
+            count_wells = sum(record[8] for record in batches)
+            self.status.setText(
+                f"Project opened: {len(batches)} LOCAL XYZ dataset(s), "
+                f"{count_wells} unlocated boreholes and "
+                f"{count_contacts} saved contacts. "
+                "Click Local XYZ in Project Explorer to inspect them. "
+                "They do NOT appear in the geographic Wells tab."
+                + (f" {missing} map source(s) missing." if missing else "")
+            )
+        else:
+            self.status.setText(
+                f"Project opened. {missing} map source(s) missing or unreadable. "
+                "Select a map row and use Relink map." if missing else
+                "Project opened. Local geology and observation tables are ready."
+            )
 
     def add_well(self):
         if not self._require_project():
@@ -495,20 +512,24 @@ class GeothermalDock(ContactToolsMixin, ModelToolsMixin,
             return
         active_layer_getter = getattr(self.iface, "activeLayer", None)
         active_layer = active_layer_getter() if callable(active_layer_getter) else None
-        dialog = ImportFromQGISDialog(
-            excluded_ids=(self.well_layer.id(), *self._preview_line_ids.values()),
-            preferred_layer_id=active_layer.id() if active_layer else None,
-            parent=self,
-        )
-        if not dialog.layers:
-            QMessageBox.information(
-                self, "No QGIS layers",
-                "Open a well point layer or map in QGIS first, then try again."
-            )
-            return
-        if dialog.exec() != QDialog.DialogCode.Accepted:
-            return
         try:
+            dialog = ImportFromQGISDialog(
+                excluded_ids=(
+                    self.well_layer.id(), *self._preview_line_ids.values()
+                ),
+                preferred_layer_id=(
+                    active_layer.id() if active_layer else None
+                ),
+                parent=self,
+            )
+            if not dialog.layers:
+                QMessageBox.information(
+                    self, "No QGIS layers",
+                    "Open a well point layer or map in QGIS first, then try again."
+                )
+                return
+            if dialog.exec() != QDialog.DialogCode.Accepted:
+                return
             selection = dialog.selection()
             if not selection:
                 return
@@ -522,7 +543,7 @@ class GeothermalDock(ContactToolsMixin, ModelToolsMixin,
                     source_crs=selection.get("source_crs"),
                 )
                 self.refresh()
-                self.tabs.setCurrentIndex(0)
+                self.tabs.setCurrentWidget(self.wells_table)
                 self.status.setText(
                     f"Copied {count} well features from QGIS layer "
                     f"'{layer.name()}'. Source layer was not modified."
@@ -557,7 +578,7 @@ class GeothermalDock(ContactToolsMixin, ModelToolsMixin,
                     self.path, self.well_layer, staged
                 )
                 self.refresh()
-                self.tabs.setCurrentIndex(0)
+                self.tabs.setCurrentWidget(self.wells_table)
                 self.status.setText(
                     f"Imported {well_count} individual boreholes "
                     f"and {interval_count} log intervals from "
@@ -659,7 +680,7 @@ class GeothermalDock(ContactToolsMixin, ModelToolsMixin,
                     source_layer=source_layer, existing_layer=layer,
                 )
                 self.refresh()
-                self.tabs.setCurrentIndex(1)
+                self.tabs.setCurrentWidget(self.maps_table)
                 self.status.setText(
                     f"Linked QGIS map '{layer.name()}' without duplicating "
                     "or changing the original layer."
@@ -821,7 +842,17 @@ class GeothermalDock(ContactToolsMixin, ModelToolsMixin,
         well_root = QTreeWidgetItem(self.tree, ["Wells"])
         map_root = QTreeWidgetItem(self.tree, ["Maps"])
         QTreeWidgetItem(self.tree, ["Z Contacts · geological elevations"])
-        QTreeWidgetItem(self.tree, ["Local XYZ · unlocated metre data"])
+        local_batches = local_xyz.list_batches(self.path) if self.path else []
+        if local_batches:
+            local_wells = sum(row[8] for row in local_batches)
+            local_contacts = sum(row[7] for row in local_batches)
+            local_label = (
+                f"Local XYZ · {local_wells} boreholes / "
+                f"{local_contacts} contacts (unlocated)"
+            )
+        else:
+            local_label = "Local XYZ · unlocated metre data"
+        QTreeWidgetItem(self.tree, [local_label])
         QTreeWidgetItem(self.tree, ["3D Models · preliminary"])
         self.wells_table.setRowCount(0)
         self.maps_table.setRowCount(0)
@@ -875,6 +906,8 @@ class GeothermalDock(ContactToolsMixin, ModelToolsMixin,
             "3D Models · preliminary": self.model_tab,
         }
         target = destinations.get(label)
+        if target is None and label.startswith("Local XYZ · "):
+            target = self.local_xyz_tab
         if target is None and item.parent() is not None:
             target = destinations.get(item.parent().text(0))
         if target is not None:
