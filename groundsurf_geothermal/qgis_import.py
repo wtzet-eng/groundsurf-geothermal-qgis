@@ -545,8 +545,17 @@ class ImportFromQGISDialog(QDialog):
         if is_contacts and layer.crs().isValid() and layer.crs().isGeographic():
             first = next(layer.getFeatures(), None)
             if first is not None:
-                p = first.geometry().asPoint()
-                likely_local = abs(p.x()) > 180 or abs(p.y()) > 90
+                geom = first.geometry()
+                if not geom.isNull() and not geom.isEmpty():
+                    if geom.isMultipart():
+                        points = geom.asMultiPoint()
+                        p = points[0] if len(points) == 1 else None
+                    else:
+                        p = geom.asPoint()
+                    if p is not None:
+                        likely_local = (
+                            abs(p.x()) > 180 or abs(p.y()) > 90
+                        )
         if likely_local:
             self.mode_combo.setCurrentIndex(self.mode_combo.findData("local_xyz"))
         elif is_contacts:

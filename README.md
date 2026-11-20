@@ -1,11 +1,11 @@
-# GroundSurf Geothermal 0.4.9 — Geological colour and borehole context in ParaView
+# GroundSurf Geothermal 0.4.10 — Clear evidence of imported QGIS data
 
 An experimental **local-first QGIS plugin** for managing wells, map layers and a
 versioned geological project database. Version 0.4 adds a **preliminary 3D
 interpolation engine** for shared geological contacts. It is not a validated
 geothermal simulator or professional structural modelling replacement.
 
-## What works in 0.4.9
+## What works in 0.4.10
 
 - Create/open a local **GeoPackage (.gpkg)** project.
 - Store well point geometries (EPSG:4326 WGS84), depths and elevations.
@@ -65,6 +65,39 @@ geothermal simulator or professional structural modelling replacement.
   An unspecified vertical reference allows storage but blocks 3D modelling.
 - Faulted geology, heat-flow and groundwater simulations are **not**
   present in 0.4. Preliminary 3D surfaces are inferred, not observed. Do not make engineering decisions based on this preview.
+
+## Where did my QGIS data go? (0.4.10)
+
+For your source `BH_logs` with repeated `ID`, metre X/Y,
+`Z` and `Strata`, **Import local XYZ metres (NO map CRS)** saves a
+distinct dataset to `gs_local_xyz_batches` and its contact rows to
+`gs_local_xyz_contacts`. They appear in **Local XYZ**, not in the
+geographic **Wells** tab. This is deliberate: a 3D model can use
+unlocated, consistent metre XYZ without inventing latitude/longitude.
+
+When opening a project with imported local data, GroundSurf now
+reports the number of datasets, individual local boreholes and contacts
+at the bottom of the dock. The Project Explorer displays the count,
+for example `Local XYZ · 10 boreholes / 50 contacts (unlocated)`.
+Click that heading to inspect source data, or open **3D Models**
+to use it for a new conceptual ParaView export. Previously saved
+local datasets are preserved.
+
+Also corrected after the 0.4.8 tab reorder:
+
+- Copying ordinary **georeferenced wells** now opens the **Wells** tab.
+- Grouping **well-log intervals** now opens the **Wells** tab.
+- Linking an existing QGIS **map** now opens the **Maps** tab.
+- GroundSurf will show a useful error dialog and write to the local
+  QGIS Message Log under `GroundSurf Geothermal` if the import
+  dialog itself cannot open. Source layers with empty or multipart
+  first geometry no longer raise unhandled errors during CRS-mode
+  suggestion.
+
+The earlier QGIS message `Python error: See message log (Python Error)`
+**does not itself identify a cause**; the exact Python traceback in
+the **Python Error** log may still be needed to identify an unrelated
+QGIS or plugin problem.
 
 ## Geological presentation in ParaView (new in 0.4.9)
 
@@ -520,6 +553,7 @@ QT_QPA_PLATFORM=offscreen PYTHONPATH=. /usr/bin/python3 tools/smoke_local_xyz_v0
 QT_QPA_PLATFORM=offscreen PYTHONPATH=. /usr/bin/python3 tools/smoke_layout_v048.py
 PYTHONPATH=. /usr/bin/python3 tools/smoke_paraview_scene_v049.py
 QT_QPA_PLATFORM=offscreen PYTHONPATH=. /usr/bin/python3 tools/smoke_paraview_ui_v049.py
+QT_QPA_PLATFORM=offscreen PYTHONPATH=. /usr/bin/python3 tools/smoke_import_visibility_v0410.py
 python3 tools/build_zip.py
 ```
 
