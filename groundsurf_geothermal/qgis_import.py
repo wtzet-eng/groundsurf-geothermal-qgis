@@ -13,9 +13,11 @@ import re
 import math
 
 from qgis.PyQt.QtCore import Qt
+from qgis.PyQt.QtGui import QGuiApplication
 from qgis.PyQt.QtWidgets import (
     QCheckBox, QComboBox, QDialog, QDialogButtonBox, QFormLayout,
-    QGroupBox, QLabel, QLineEdit, QMessageBox, QPushButton, QTabWidget, QVBoxLayout,
+    QGroupBox, QLabel, QLineEdit, QMessageBox, QPushButton, QScrollArea,
+    QTabWidget, QVBoxLayout,
 )
 from qgis.core import (
     QgsCoordinateReferenceSystem, QgsCoordinateTransform, QgsGeometry,
@@ -323,14 +325,24 @@ class ImportFromQGISDialog(QDialog):
 
     def __init__(self, excluded_ids=(), preferred_layer_id=None, parent=None):
         super().__init__(parent)
-        self.setWindowTitle("Import from open QGIS project")
-        self.setMinimumWidth(535)
-        self.resize(560, 565)
+        self.setWindowTitle("GroundSurf · Import from QGIS project")
+        self.setMinimumSize(560, 510)
+        self.setSizeGripEnabled(True)
+        screen = QGuiApplication.primaryScreen()
+        if screen is not None:
+            available = screen.availableGeometry()
+            self.resize(
+                min(800, max(620, available.width() - 85)),
+                min(755, max(510, available.height() - 95)),
+            )
+        else:
+            self.resize(760, 680)
         self.layers = eligible_layers(excluded_ids)
         layout = QVBoxLayout(self)
+        layout.setContentsMargins(14, 12, 14, 12)
+        layout.setSpacing(8)
         intro = QLabel(
-            "Choose an existing QGIS layer. Copy well points into the local "
-            "GroundSurf GeoPackage, or link a map without copying it."
+            "Choose a QGIS layer and check its fields. Source data stay unchanged."
         )
         intro.setWordWrap(True)
         layout.addWidget(intro)
@@ -346,7 +358,8 @@ class ImportFromQGISDialog(QDialog):
             )
         form.addRow("Open QGIS layer", self.layer_combo)
         self.source_crs = QgsProjectionSelectionWidget()
-        form.addRow("Source X/Y CRS (for import only)", self.source_crs)
+        self.source_crs_label = QLabel("Source X/Y CRS")
+        form.addRow(self.source_crs_label, self.source_crs)
         self.crs_note = QLabel(
             "Choose the CRS in which the source X/Y coordinates were "
             "originally recorded. This does NOT alter the QGIS layer. "
@@ -381,7 +394,10 @@ class ImportFromQGISDialog(QDialog):
         explanation.setWordWrap(True)
         mapping_layout.addRow(explanation)
         self.well_tabs = QTabWidget()
-        self.well_tabs.addTab(self.mapping_box, "Well identity")
+        self.well_tabs.setDocumentMode(True)
+        self.well_tabs.addTab(
+            self._scroll_fields(self.mapping_box), "Well identity"
+        )
 
         self.interval_box = QGroupBox("Optional geological interval attributes")
         interval_layout = QFormLayout(self.interval_box)
@@ -399,7 +415,9 @@ class ImportFromQGISDialog(QDialog):
         )
         note.setWordWrap(True)
         interval_layout.addRow(note)
-        self.well_tabs.addTab(self.interval_box, "Geological intervals")
+        self.well_tabs.addTab(
+            self._scroll_fields(self.interval_box), "Geological intervals"
+        )
 
         # PointZ/XYZ stratigraphic contacts (Z is elevation, not depth).
         self.contact_box = QGroupBox("3D stratigraphic contact elevations")
@@ -429,8 +447,7 @@ class ImportFromQGISDialog(QDialog):
         self.contact_selected_only = QCheckBox("Import selected records only")
         contact_form.addRow(self.contact_selected_only)
         self.local_confirm = QCheckBox(
-            "I confirm source X, Y and Z are in metres and belong to ONE "
-            "local engineering coordinate frame"
+            "I confirm X/Y/Z use metres in one local coordinate frame"
         )
         self.local_confirm.setChecked(False)
         contact_form.addRow(self.local_confirm)
@@ -441,15 +458,24 @@ class ImportFromQGISDialog(QDialog):
         )
         contact_note.setWordWrap(True)
         contact_form.addRow(contact_note)
-        self.well_tabs.addTab(self.contact_box, "PointZ / contact elevations")
-        layout.addWidget(self.well_tabs)
+        self.well_tabs.addTab(
+            self._scroll_fields(self.contact_box), "PointZ / contacts"
+        )
+        layout.addWidget(self.well_tabs, 1)
 
         self.preview_button = QPushButton("Preview grouped boreholes")
         self.preview_button.clicked.connect(self.preview_groups)
         layout.addWidget(self.preview_button)
         self.group_summary = QLabel("")
         self.group_summary.setWordWrap(True)
+        self.group_summary.setObjectName("gsPreviewSummary")
+        self.group_summary.setMaximumHeight(56)
+        self.group_summary.setToolTip(
+            "Preview validates every selected source row before any changes "
+            "are saved. Warnings can be inspected in the preview dialog."
+        )
         layout.addWidget(self.group_summary)
+        self.group_summary.setVisible(False)
 
         buttons = QDialogButtonBox(
             QDialogButtonBox.StandardButton.Ok
@@ -465,6 +491,16 @@ class ImportFromQGISDialog(QDialog):
             if index >= 0:
                 self.layer_combo.setCurrentIndex(index)
         self._update_layer()
+
+    @staticmethod
+    def _scroll_fields(group):
+        # The actual mapping area scrolls on small screens. Preview and
+        # confirmation buttons remain visible and never get pushed out.
+        area = QScrollArea()
+        area.setWidgetResizable(True)
+        area.setFrameShape(QScrollArea.Shape.NoFrame)
+        area.setWidget(group)
+        return area
 
     def selected_layer(self):
         return QgsProject.instance().mapLayer(self.layer_combo.currentData())
@@ -579,6 +615,7 @@ class ImportFromQGISDialog(QDialog):
         is_contacts = mode == "contacts" or is_local_xyz
         is_wells = mode in ("wells", "grouped")
         self.source_crs.setVisible(is_wells or mode == "contacts")
+        self.source_crs_label.setVisible(is_wells or mode == "contacts")
         self.crs_note.setVisible(is_wells or mode == "contacts")
         self.well_tabs.setVisible(is_wells or is_contacts)
         self.local_confirm.setVisible(is_local_xyz)
@@ -597,6 +634,7 @@ class ImportFromQGISDialog(QDialog):
         )
         self.group_summary.setVisible(is_group or is_contacts)
         self.group_summary.setText("")
+        self.group_summary.setVisible(False)
         if is_contacts:
             self.contact_selected_only.setEnabled(layer.selectedFeatureCount() > 0)
             self.contact_selected_only.setChecked(layer.selectedFeatureCount() > 0)
@@ -616,11 +654,9 @@ class ImportFromQGISDialog(QDialog):
             self._update_contact_fields()
             self.details.setText(
                 (
-                    "LOCAL CARTESIAN ONLY: source X/Y/Z are used as metre "
-                    "values. No world-map position is created, and no CRS "
-                    "transformation is applied. Confirm units below. "
-                    "Boreholes and contacts will appear in GroundSurf's "
-                    "Local XYZ tab and can drive a ParaView 3D model."
+                    "LOCAL XYZ: source metres, no CRS transform or world-map "
+                    "position. Imported contacts appear in Local XYZ and can "
+                    "be modelled in ParaView."
                 ) if is_local_xyz else (
                     f"{layer.featureCount()} QGIS contact records. "
                     "One well per unique ID; Z values are ELEVATIONS. "
@@ -690,6 +726,7 @@ class ImportFromQGISDialog(QDialog):
         }
 
     def preview_groups(self):
+        self.group_summary.setVisible(True)
         from . import grouped_import, elevation_import
         is_contacts = self.mode_combo.currentData() in ("contacts","local_xyz")
         data = self._contact_selection() if is_contacts else self._group_selection()
@@ -785,8 +822,10 @@ class ImportFromQGISDialog(QDialog):
             )
             QMessageBox.information(self, "Grouped borehole preview", message)
         except Exception as exc:
-            self.group_summary.setText("Check mapping or source records.")
-            QMessageBox.warning(self, "Grouping preview failed", str(exc))
+            self.group_summary.setText(
+                "Preview error: " + str(exc)[:300]
+            )
+            QMessageBox.warning(self, "Import preview failed", str(exc))
 
     def selection(self):
         if self.result() != QDialog.DialogCode.Accepted:

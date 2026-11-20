@@ -45,7 +45,7 @@ def check(output):
         show_boreholes=True,
     )
     data=json.loads(manifest.read_text())
-    assert data["version"]=="0.4.10"
+    assert data["version"]=="0.4.11"
     assert data["scene"]=="model.vtm"
     assert len(data["outputs"])==9, data["outputs"]
     assert data["source_observations"]["contact_count"]==20

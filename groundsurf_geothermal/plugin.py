@@ -1,4 +1,4 @@
-"""GroundSurf Geothermal 0.4.10: local and mapped geological workspace."""
+"""GroundSurf Geothermal 0.4.11: local and mapped geological workspace."""
 import os
 from pathlib import Path
 
@@ -199,7 +199,7 @@ class GeothermalDock(ContactToolsMixin, ModelToolsMixin,
         self.info = QTextEdit()
         self.info.setReadOnly(True)
         self.info.setPlainText(
-            "GroundSurf Geothermal 0.4.10\n\n"
+            "GroundSurf Geothermal 0.4.11\n\n"
             "Local GeoPackage projects and WGS84 well locations.\n"
             "Depths: metres, positive downward.\n"
             "Elevations: metres, datum supplied by user.\n\n"
@@ -440,11 +440,11 @@ class GeothermalDock(ContactToolsMixin, ModelToolsMixin,
             count_contacts = sum(record[7] for record in batches)
             count_wells = sum(record[8] for record in batches)
             self.status.setText(
-                f"Project opened: {len(batches)} LOCAL XYZ dataset(s), "
-                f"{count_wells} unlocated boreholes and "
-                f"{count_contacts} saved contacts. "
-                "Click Local XYZ in Project Explorer to inspect them. "
-                "They do NOT appear in the geographic Wells tab."
+                f"Project opened: {len(batches)} separate LOCAL XYZ import(s), "
+                f"{count_wells} borehole entries and "
+                f"{count_contacts} saved contact rows in total. "
+                "The same borehole can occur in multiple imports. "
+                "Choose a batch in Local XYZ; batches are not combined."
                 + (f" {missing} map source(s) missing." if missing else "")
             )
         else:
@@ -598,15 +598,25 @@ class GeothermalDock(ContactToolsMixin, ModelToolsMixin,
                     vertical_reference=selection["vertical_datum"],
                     selected_only=selection["selected_only"],
                 )
+                # Make the final decision readable; the Preview dialogue
+                # still presents all geological and coordinate cautions.
+                ambiguities = [
+                    issue for issue in staged["warnings"]
+                    if "multiple heights" in issue
+                ]
                 prompt=(
-                    f"Save {staged['contact_count']} local XYZ source records "
-                    f"for {staged['well_count']} boreholes in GroundSurf?\n\n"
-                    "X, Y and Z are TREATED AS METRES without a geographic "
-                    "CRS. No longitude/latitude is generated.\n"
-                    "These data will appear under Local XYZ, NOT the "
-                    "world-map Wells or Z Contacts layers.\n"
-                    "The original QGIS layer stays unchanged.\n\n"
-                    + "\n".join(staged["warnings"][:9])
+                    f"Import {staged['contact_count']} XYZ contacts as "
+                    f"{staged['well_count']} local boreholes?\n\n"
+                    "Coordinates are assumed metres; no map CRS is "
+                    "assigned. Z means elevation, not drilling depth.\n"
+                    "The original QGIS layer will not be changed.\n"
+                    "Results appear under Local XYZ (not Wells).\n"
+                    "Vertical reference is unverified unless provided.\n"
+                    + (
+                        "\nData cautions:\n"
+                        + "\n".join(ambiguities[:5])
+                        if ambiguities else ""
+                    )
                 )
                 if QMessageBox.question(
                     self, "Confirm UNLOCATED local XYZ import", prompt,
@@ -846,10 +856,16 @@ class GeothermalDock(ContactToolsMixin, ModelToolsMixin,
         if local_batches:
             local_wells = sum(row[8] for row in local_batches)
             local_contacts = sum(row[7] for row in local_batches)
-            local_label = (
-                f"Local XYZ · {local_wells} boreholes / "
-                f"{local_contacts} contacts (unlocated)"
-            )
+            if len(local_batches) == 1:
+                local_label = (
+                    f"Local XYZ · {local_wells} boreholes / "
+                    f"{local_contacts} contacts (unlocated)"
+                )
+            else:
+                local_label = (
+                    f"Local XYZ · {len(local_batches)} separate imports / "
+                    f"{local_contacts} contact rows"
+                )
         else:
             local_label = "Local XYZ · unlocated metre data"
         QTreeWidgetItem(self.tree, [local_label])

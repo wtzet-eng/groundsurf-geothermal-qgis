@@ -177,7 +177,7 @@ with tempfile.TemporaryDirectory() as folder:
     dock.load_project(str(fresh))
     assert dock.wells_table.rowCount()==0
     assert dock.local_table.rowCount()==50
-    assert "50 saved contacts" in dock.status.text()
+    assert "50 saved contact rows" in dock.status.text()
     headings=[
         dock.tree.topLevelItem(i)
         for i in range(dock.tree.topLevelItemCount())

@@ -37,18 +37,51 @@ FALLBACK_PALETTE = (
     "#aa819a", "#8cab73", "#c47e67", "#779c9f",
     "#b7a078", "#a086a8", "#6b987d", "#ad8d7a",
 )
+# An alternative visualisation palette, never a different interpretation.
+# Original sources and geological material classifications are unchanged.
+CONTRAST_COLORS = {
+    "quaternary": "#39b9b1",
+    "pleistocene": "#f0c971",
+    "holocene": "#68d5b7",
+    "palaeogene": "#e99a56",
+    "paleogene": "#e99a56",
+    "cretaceous": "#d96666",
+    "jurassic": "#58bc86",
+    "triassic": "#be82d5",
+    "base": "#6e90bb",
+    "ground": "#b5d7c1",
+    "soil": "#d9c183",
+    "peat": "#ae8583",
+    "clay": "#c99980",
+    "sand": "#f4c774",
+    "sandstone": "#dba263",
+    "limestone": "#80cbd3",
+    "granite": "#ce8eb7",
+}
+CONTRAST_FALLBACK = (
+    "#47c6b4", "#e2ae5b", "#b774de", "#79d58d",
+    "#e87878", "#5ab3df", "#e0d26b", "#cf8fae",
+    "#76c9c6", "#a1c66d", "#d68b64", "#8c9deb",
+)
+PALETTE_LABELS = {
+    "earth": "Geological · muted earth tones",
+    "contrast": "Geological · high contrast",
+}
 
 
-def geology_color(label):
-    """Return a stable hex colour for a source geological unit name."""
+def geology_color(label, palette="earth"):
+    """Stable formation colours that never imply a geological certainty."""
+    if palette not in PALETTE_LABELS:
+        raise ValueError("Unknown ParaView geological palette")
     text = str(label).strip().casefold()
-    for name, colour in NAMED_COLORS.items():
+    colors = NAMED_COLORS if palette == "earth" else CONTRAST_COLORS
+    fallback = FALLBACK_PALETTE if palette == "earth" else CONTRAST_FALLBACK
+    for name, colour in colors.items():
         if text == name or (name not in ("base", "ground")
                            and name in text.split()):
             return colour
     digest = hashlib.sha256(text.encode("utf-8")).digest()
-    return FALLBACK_PALETTE[int.from_bytes(digest[:4], "big")
-                            % len(FALLBACK_PALETTE)]
+    return fallback[int.from_bytes(digest[:4], "big") % len(fallback)]
 
 
 def rgb01(value):
@@ -58,7 +91,11 @@ def rgb01(value):
     return [int(h[i:i+2], 16) / 255.0 for i in (0, 2, 4)]
 
 
-def appearance(mesh, vertical_exaggeration=1.0, show_boreholes=True):
+def appearance(mesh, vertical_exaggeration=1.0, show_boreholes=True,
+               palette="earth", show_edges=False,
+               show_orientation=True, show_bounds=False):
+    if palette not in PALETTE_LABELS:
+        raise ValueError("Unknown ParaView geological palette")
     scale = float(vertical_exaggeration)
     if not (0.5 <= scale <= 10.0):
         raise ValueError("Vertical exaggeration must be 0.5–10×")
@@ -69,12 +106,17 @@ def appearance(mesh, vertical_exaggeration=1.0, show_boreholes=True):
         bands.append({
             "label": str(top),
             "unit_between": [top, lower],
-            "color": geology_color(top),
+            "color": geology_color(top, palette),
             "description": "Interpreted volume between source contact horizons",
         })
     return {
         "schema": "groundsurf-paraview-appearance-v1",
         "background": BACKGROUND_HEX,
+        "palette": palette,
+        "palette_label": PALETTE_LABELS[palette],
+        "show_unit_edges": bool(show_edges),
+        "show_orientation_axes": bool(show_orientation),
+        "show_bounds_box": bool(show_bounds),
         "vertical_exaggeration": scale,
         "show_boreholes": bool(show_boreholes),
         "show_contacts": bool(show_boreholes),
@@ -100,8 +142,13 @@ def appearance(mesh, vertical_exaggeration=1.0, show_boreholes=True):
 
 
 def save_appearance(folder, mesh, vertical_exaggeration=1.0,
-                    show_boreholes=True):
-    data = appearance(mesh, vertical_exaggeration, show_boreholes)
+                    show_boreholes=True, palette="earth",
+                    show_edges=False, show_orientation=True,
+                    show_bounds=False):
+    data = appearance(
+        mesh, vertical_exaggeration, show_boreholes, palette,
+        show_edges, show_orientation, show_bounds
+    )
     output = Path(folder) / "appearance.json"
     output.write_text(
         json.dumps(data, ensure_ascii=False, indent=2) + "\n",

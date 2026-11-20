@@ -40,10 +40,16 @@ def _colour(display, hex_code):
         _safe_property(display, "ColorArrayName", [None, ""])
     _safe_property(display, "DiffuseColor", rgb)
     _safe_property(display, "AmbientColor", rgb)
-    _safe_property(display, "Specular", 0.1)
+    # Controlled, matte lighting helps read contacts without glossy
+    # simulated material properties.
+    _safe_property(display, "Ambient", 0.26)
+    _safe_property(display, "Diffuse", 0.68)
+    _safe_property(display, "Specular", 0.12)
+    _safe_property(display, "SpecularPower", 24.0)
 
 
-def _vis_source(path, label, view, factor, colour, kind="unit"):
+def _vis_source(path, label, view, factor, colour, kind="unit",
+                show_edges=False):
     reader = pvs.OpenDataFile(str(path))
     if reader is None:
         raise RuntimeError("ParaView could not read " + str(path))
@@ -66,6 +72,26 @@ def _vis_source(path, label, view, factor, colour, kind="unit"):
     else:
         _safe_property(display, "Representation", "Surface")
         _safe_property(display, "Opacity", 1.0)
+        if show_edges:
+            # Outline only changes in the outer geology surface angle.
+            # Surface With Edges outlines every tiny interpolation triangle,
+            # which can black out the whole coloured geological model.
+            try:
+                surface = pvs.ExtractSurface(Input=upstream)
+                pvs.RenameSource("SURFACE | " + label, surface)
+                line_filter = pvs.FeatureEdges(Input=surface)
+                line_filter.FeatureEdges = 1
+                line_filter.BoundaryEdges = 1
+                line_filter.ManifoldEdges = 0
+                line_filter.NonManifoldEdges = 0
+                line_filter.FeatureAngle = 55.0
+                pvs.RenameSource("OUTLINE | " + label, line_filter)
+                line_display = pvs.Show(line_filter, view)
+                _colour(line_display, "#879d91")
+                _safe_property(line_display, "LineWidth", 1.5)
+                _safe_property(line_display, "Representation", "Wireframe")
+            except (AttributeError, RuntimeError, ValueError) as exc:
+                print("[GroundSurf] Optional unit outline unavailable:", exc)
     return upstream, display
 
 
@@ -100,6 +126,23 @@ def main():
     _safe_property(view, "BackgroundColorMode", "Single Color")
     _safe_property(view, "Background", _rgb(scene.get("background", "#212121")))
     _safe_property(view, "ViewSize", [1300, 850])
+    _safe_property(
+        view, "OrientationAxesVisibility",
+        1 if scene.get("show_orientation_axes", True) else 0
+    )
+    _safe_property(view, "CameraParallelProjection", 0)
+    if scene.get("show_bounds_box", False):
+        # For metre-based local XYZ this is a LOCAL bounding box, not a
+        # geographic grid. Full source coordinates remain in model.json.
+        try:
+            bounds_grid = view.AxesGrid
+            _safe_property(bounds_grid, "Visibility", 1)
+            _safe_property(bounds_grid, "XTitle", "X (local m)")
+            _safe_property(bounds_grid, "YTitle", "Y (local m)")
+            _safe_property(bounds_grid, "ZTitle", "Z (elevation m)")
+        except (AttributeError, RuntimeError, ValueError):
+            print("[GroundSurf] Optional bounds box unavailable")
+
 
     shown = []
     for index, band in enumerate(scene["bands"]):
@@ -113,7 +156,8 @@ def main():
             raise ValueError("Missing geological geometry: " + str(geom))
         colour = band["color"]
         source, display = _vis_source(
-            geom, "GroundSurf | " + label, view, factor, colour
+            geom, "GroundSurf | " + label, view, factor, colour,
+            show_edges=scene.get("show_unit_edges", False),
         )
         shown.append((source, display))
         _legend_item(view, str(top), colour, index, len(scene["bands"]))

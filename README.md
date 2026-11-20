@@ -1,11 +1,11 @@
-# GroundSurf Geothermal 0.4.10 — Clear evidence of imported QGIS data
+# GroundSurf Geothermal 0.4.11 — Geological 3D workspace with clearer imports
 
 An experimental **local-first QGIS plugin** for managing wells, map layers and a
 versioned geological project database. Version 0.4 adds a **preliminary 3D
 interpolation engine** for shared geological contacts. It is not a validated
 geothermal simulator or professional structural modelling replacement.
 
-## What works in 0.4.10
+## What works in 0.4.11
 
 - Create/open a local **GeoPackage (.gpkg)** project.
 - Store well point geometries (EPSG:4326 WGS84), depths and elevations.
@@ -65,6 +65,46 @@ geothermal simulator or professional structural modelling replacement.
   An unspecified vertical reference allows storage but blocks 3D modelling.
 - Faulted geology, heat-flow and groundwater simulations are **not**
   present in 0.4. Preliminary 3D surfaces are inferred, not observed. Do not make engineering decisions based on this preview.
+
+## Roomier import and ParaView scene styling (0.4.11)
+
+**Import from QGIS** now opens a wider, resizable window. The mapping
+fields have their own scroll area, so **Preview / OK / Cancel** stay
+visible even when the QGIS screen is small. Source-mode notes are
+shorter and the CRS label disappears in local-metre mode, where a CRS
+transform must not be attempted. Preview failures show the actual
+error. The final local XYZ confirmation is shorter but still flags
+duplicate conflicting horizons (e.g. two Cretaceous contact heights).
+For multiple imports, the explorer says **2 separate imports** rather
+than implying 20 necessarily distinct boreholes. Previously stored
+datasets are unchanged and are modelled one batch at a time.
+
+**3D Models → Scene look…** configures the next ParaView export:
+
+- **Geological · muted earth tones** (default): consistent colours
+  assigned to formation labels.
+- **Geological · high contrast**: vivid, distinct formation colours
+  for presentations and interpretation.
+- Optional **formation outlines**, *not all triangle mesh edges*;
+  these accent major geological boundaries without hiding colours.
+- Optional XYZ orientation triad (default on) and labelled **local
+  X/Y/Z bounds box** (default off); local coordinates are not a
+  georeferenced map.
+- Consistent **#212121** charcoal scene, soft matte lighting and an
+  oblique geological camera. Existing source-contact markers, single-
+  unit visibility toggles and vertical display exaggeration remain.
+
+These are ordinary geological-visualisation conventions, not a copy
+of any vendor's proprietary interface or artwork.
+
+The two palettes and scene toggles are stored in local QSettings.
+New model folders save the complete choices in `appearance.json`.
+For per-formation custom colours, change a
+`bands[].color` field to a six-digit hex string (e.g. `#39b9b1`)
+and rerun `view_in_paraview.py` via the ParaView Python Shell.
+No re-export or modification of the geological XYZ is needed.
+Original VTK geometry, contact elevations, IDW interpolation and
+source CRS handling remain identical.
 
 ## Where did my QGIS data go? (0.4.10)
 
@@ -554,6 +594,7 @@ QT_QPA_PLATFORM=offscreen PYTHONPATH=. /usr/bin/python3 tools/smoke_layout_v048.
 PYTHONPATH=. /usr/bin/python3 tools/smoke_paraview_scene_v049.py
 QT_QPA_PLATFORM=offscreen PYTHONPATH=. /usr/bin/python3 tools/smoke_paraview_ui_v049.py
 QT_QPA_PLATFORM=offscreen PYTHONPATH=. /usr/bin/python3 tools/smoke_import_visibility_v0410.py
+QT_QPA_PLATFORM=offscreen PYTHONPATH=. /usr/bin/python3 tools/smoke_scene_look_v0411.py
 python3 tools/build_zip.py
 ```
 

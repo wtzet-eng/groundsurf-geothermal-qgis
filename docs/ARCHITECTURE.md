@@ -1,4 +1,4 @@
-# GroundSurf Geothermal architecture — v0.4.10
+# GroundSurf Geothermal architecture — v0.4.11
 
 ## Stable boundaries
 
@@ -265,3 +265,29 @@ The Project Explorer summarises unlocated XYZ dataset sizes from
 the local GeoPackage; the stored data, source coordinate frames,
 georeferenced Wells, georeferenced Z Contacts and local unlocated
 batch tables remain wholly separate and unchanged.
+
+## Scrollable import and vendor-neutral 3D appearance (0.4.11)
+
+The QGIS ImportFromQGISDialog now reserves its Preview and confirmation
+controls outside the scrollable QTabWidget. Each mapping pane is
+wrapped in QScrollArea with resizable contents; the active operation
+controls which source CRS fields and form inputs are visible. Dialog
+width/height adapt to available desktop geometry, preserving
+small-screen usability. Duplicate imports remain separate GeoPackage
+batches and are counted as such.
+
+The GroundSurf 3D Models scene-look modal chooses an earth or
+high-contrast categorical palette and independently toggles
+orientation axes, local source coordinate bounds and geological
+formation outlines. Styling is stored in QSettings and exported into
+appearance.json. The backdrop remains #212121. model_core passes only
+presentation flags into scene_style; all original VTK data, scalars,
+geological modelling assumptions and source coordinates are unchanged.
+
+ParaView's script builds optional formation outlines from
+ExtractSurface → FeatureEdges with a feature-angle threshold, rather
+than using the dense Surface With Edges display mode, which blacked
+out small triangles. Optional AxesGrid is explicitly labelled LOCAL
+metres; no geographic assignment is made. Tests use an isolated
+synthetic 50-PointZ-row source, QGIS offscreen geometry and a real
+ParaView 6.2.0 scripted offscreen render with outlines and axes box.
