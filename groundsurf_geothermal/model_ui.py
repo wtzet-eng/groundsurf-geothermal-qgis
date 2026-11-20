@@ -5,7 +5,7 @@ import json
 from pathlib import Path
 import uuid
 
-from qgis.PyQt.QtCore import Qt, QUrl, QProcess, QStandardPaths
+from qgis.PyQt.QtCore import QFile, Qt, QUrl, QProcess, QStandardPaths
 from qgis.PyQt.QtGui import QDesktopServices
 from qgis.PyQt.QtWidgets import (
     QCheckBox, QComboBox, QDialog, QDialogButtonBox, QDoubleSpinBox,
@@ -112,6 +112,14 @@ class ModelToolsMixin:
         folder_button.setToolTip("Open the selected model output directory")
         folder_button.clicked.connect(self.open_model_folder)
         buttons.addWidget(folder_button)
+        self.delete_model_button = QPushButton("Delete model…")
+        self.delete_model_button.setToolTip(
+            "Remove the selected generated model from GroundSurf. "
+            "Optionally move ONLY its verified generated files to Trash. "
+            "Imported wells and contacts are never deleted."
+        )
+        self.delete_model_button.clicked.connect(self.delete_selected_model)
+        buttons.addWidget(self.delete_model_button)
         layout.addLayout(buttons)
         self.model_table=QTableWidget(0,3)
         # Reserve space for a header AND at least one saved-model row.
@@ -372,6 +380,87 @@ class ModelToolsMixin:
             )
             return None
         return folder
+
+    def delete_selected_model(self):
+        """Safe explicit removal of one model; preserve raw geological data."""
+        if not self._require_project():
+            return
+        selected = self.model_table.currentRow()
+        if selected < 0 or self.model_table.item(selected, 0) is None:
+            QMessageBox.information(
+                self, "Select model", "Select a saved model row to remove."
+            )
+            return
+        model_id = self.model_table.item(selected, 0).data(
+            Qt.ItemDataRole.UserRole
+        )
+        try:
+            # The unique ID matters: several saved models may share a name.
+            row = models.find_record(self.path, model_id)
+            if row is None:
+                raise ValueError("The selected model is no longer saved")
+            safe_folder = models.safe_trash_folder(self.path, row)
+            dialog = QMessageBox(self)
+            dialog.setIcon(QMessageBox.Icon.Warning)
+            dialog.setWindowTitle("Remove conceptual 3D model")
+            dialog.setText(f"Remove the selected model from GroundSurf?\n\n{row[1]}")
+            dialog.setInformativeText(
+                "This removes only one saved model entry. Imported "
+                "boreholes, geological contacts, maps and observations "
+                "remain unchanged.\n\n"
+                "You can separately move its generated ParaView files to "
+                "your system Trash."
+            )
+            trash = QCheckBox(
+                "Also move this model's generated files to Trash"
+            )
+            trash.setChecked(False)
+            if safe_folder is None:
+                trash.setEnabled(False)
+                trash.setToolTip(
+                    "Generated folder is missing or cannot be safely "
+                    "identified. Only the list entry can be removed."
+                )
+            else:
+                trash.setToolTip(str(safe_folder))
+            dialog.setCheckBox(trash)
+            remove_button = dialog.addButton(
+                "Remove selected model", QMessageBox.ButtonRole.AcceptRole
+            )
+            cancel_button = dialog.addButton(
+                "Cancel", QMessageBox.ButtonRole.RejectRole
+            )
+            dialog.setDefaultButton(cancel_button)
+            dialog.exec()
+            if dialog.clickedButton() != remove_button:
+                return
+            if trash.isChecked():
+                # Revalidate before touching the filesystem. Qt moves the
+                # entire folder to the user Trash, not permanent deletion.
+                target = models.safe_trash_folder(self.path, row)
+                if target is None or target != safe_folder:
+                    raise ValueError(
+                        "Generated model folder changed; no files or "
+                        "catalogue entries were removed"
+                    )
+                moved = QFile.moveToTrash(str(target))
+                moved_ok = moved[0] if isinstance(moved, tuple) else bool(moved)
+                if not moved_ok:
+                    raise OSError(
+                        "The model folder could not be moved to Trash. "
+                        "The catalogue entry is unchanged."
+                    )
+            models.remove_model(self.path, model_id)
+            self.refresh_models()
+            self.status.setText(
+                "Removed one conceptual model"
+                + (" and moved its generated files to Trash."
+                   if trash.isChecked() else " from the model list. "
+                   "Generated files remain on disk.")
+                + " Boreholes, geological contacts and maps are unchanged."
+            )
+        except Exception as exc:
+            self._error("Could not remove 3D model", exc)
 
     def open_model_folder(self):
         folder=self._selected_model()

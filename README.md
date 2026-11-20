@@ -1,11 +1,11 @@
-# GroundSurf Geothermal 0.4.11 — Geological 3D workspace with clearer imports
+# GroundSurf Geothermal 0.4.12 — Safe 3D model deletion from QGIS
 
 An experimental **local-first QGIS plugin** for managing wells, map layers and a
 versioned geological project database. Version 0.4 adds a **preliminary 3D
 interpolation engine** for shared geological contacts. It is not a validated
 geothermal simulator or professional structural modelling replacement.
 
-## What works in 0.4.11
+## What works in 0.4.12
 
 - Create/open a local **GeoPackage (.gpkg)** project.
 - Store well point geometries (EPSG:4326 WGS84), depths and elevations.
@@ -65,6 +65,35 @@ geothermal simulator or professional structural modelling replacement.
   An unspecified vertical reference allows storage but blocks 3D modelling.
 - Faulted geology, heat-flow and groundwater simulations are **not**
   present in 0.4. Preliminary 3D surfaces are inferred, not observed. Do not make engineering decisions based on this preview.
+
+## Delete selected conceptual models (new in 0.4.12)
+
+Open **3D Models**, click one saved model row, then click
+**Delete model…** beside **Model folder**.
+
+A confirmation dialogue identifies the selected model and uses
+**Cancel by default**. The main action **Remove selected model**
+removes exactly that model's catalogue entry in the project's
+GeoPackage, identified by its unique ID even if several models
+have the same name. By default, **all output files remain on disk**.
+
+To clean up space as well, explicitly check
+**Also move this model's generated files to Trash**. Qt moves the
+verified GroundSurf-generated model folder to the *system Trash*,
+where files can normally be recovered. This is not an immediate
+permanent wipe. GroundSurf will not offer file removal when the
+folder is missing, symlinked, custom/unrecognised, shared by
+another model entry or fails validation against the GroundSurf
+`model.json` manifest. If moving to Trash fails, the catalogue
+entry is preserved.
+
+**Crucially:** no operation removes imported boreholes, geological
+intervals, local XYZ contacts, well observations, maps or QGIS source
+layers. The project database is never deleted. A removed catalogue
+entry cannot be automatically restored by GroundSurf if only the
+listing is removed; the export files can still be opened manually.
+The model deletion action does not modify the active ParaView
+session; close or hide the corresponding source there if necessary.
 
 ## Roomier import and ParaView scene styling (0.4.11)
 
@@ -595,6 +624,7 @@ PYTHONPATH=. /usr/bin/python3 tools/smoke_paraview_scene_v049.py
 QT_QPA_PLATFORM=offscreen PYTHONPATH=. /usr/bin/python3 tools/smoke_paraview_ui_v049.py
 QT_QPA_PLATFORM=offscreen PYTHONPATH=. /usr/bin/python3 tools/smoke_import_visibility_v0410.py
 QT_QPA_PLATFORM=offscreen PYTHONPATH=. /usr/bin/python3 tools/smoke_scene_look_v0411.py
+QT_QPA_PLATFORM=offscreen PYTHONPATH=. /usr/bin/python3 tools/smoke_delete_model_v0412.py
 python3 tools/build_zip.py
 ```
 
