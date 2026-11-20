@@ -371,7 +371,9 @@ def _safe_name(name):
 
 
 def export_model(mesh, folder, name, epsg, datum, wells, warnings=(),
-                 vertical_exaggeration=1.0, show_boreholes=True):
+                 vertical_exaggeration=1.0, show_boreholes=True,
+                 palette="earth", show_edges=False,
+                 show_orientation=True, show_bounds=False):
     """Write unchanged VTK geology plus optional ParaView appearance script.
 
     Appearance never modifies source XYZ or alters the base VTK model.
@@ -401,7 +403,9 @@ def export_model(mesh, folder, name, epsg, datum, wells, warnings=(),
         )
         observed = _write_well_observations(root, mesh)
         appearance_file, appearance = scene_style.save_appearance(
-            root, mesh, vertical_exaggeration, show_boreholes
+            root, mesh, vertical_exaggeration, show_boreholes,
+            palette=palette, show_edges=show_edges,
+            show_orientation=show_orientation, show_bounds=show_bounds,
         )
         # The script runs inside ParaView's Python engine, not inside QGIS.
         (root/"view_in_paraview.py").write_text(
@@ -415,7 +419,7 @@ def export_model(mesh, folder, name, epsg, datum, wells, warnings=(),
             '<vtkMultiBlockDataSet>\n'+blocks+'\n'
             '</vtkMultiBlockDataSet>\n</VTKFile>\n',encoding="utf-8")
         manifest={
-            "application":"GroundSurf Geothermal", "version":"0.4.10",
+            "application":"GroundSurf Geothermal", "version":"0.4.11",
             "name":str(name), "created_utc":datetime.now(timezone.utc).isoformat(),
             "method":METHOD, "crs":epsg, "vertical_datum":datum,
             "horizons":mesh["horizons"], "subdivisions":mesh["subdivisions"],
@@ -431,6 +435,9 @@ def export_model(mesh, folder, name, epsg, datum, wells, warnings=(),
             "colour_by_default":"geological unit identity (categorical)",
             "source_observations":observed,
             "display_vertical_exaggeration":appearance["vertical_exaggeration"],
+            "display_palette":appearance["palette"],
+            "display_unit_edges":appearance["show_unit_edges"],
+            "display_orientation_axes":appearance["show_orientation_axes"],
             "display_warnings":[
                 "Observed contacts and well constraints are shown separately "
                 "from coloured interpolated IDW volumes.",

@@ -8,11 +8,15 @@ import uuid
 from qgis.PyQt.QtCore import Qt, QUrl, QProcess, QStandardPaths
 from qgis.PyQt.QtGui import QDesktopServices
 from qgis.PyQt.QtWidgets import (
-    QCheckBox, QComboBox, QDoubleSpinBox, QFileDialog, QHBoxLayout,
-    QInputDialog, QLabel, QMessageBox, QPushButton, QTableWidget, QTableWidgetItem,
+    QCheckBox, QComboBox, QDialog, QDialogButtonBox, QDoubleSpinBox,
+    QFileDialog, QFormLayout, QHBoxLayout, QInputDialog, QLabel,
+    QMessageBox, QPushButton, QTableWidget, QTableWidgetItem,
     QVBoxLayout, QWidget,
 )
-from . import model_adapter, contact_adapter, local_xyz, model_core, models
+from . import (
+    model_adapter, contact_adapter, local_xyz, model_core, models,
+    scene_style,
+)
 
 
 class ModelToolsMixin:
@@ -55,7 +59,7 @@ class ModelToolsMixin:
         model_note.setWordWrap(True)
         layout.addWidget(model_note)
         scene_settings = QHBoxLayout()
-        scene_settings.addWidget(QLabel("ParaView display Z ×"))
+        scene_settings.addWidget(QLabel("Display Z ×"))
         self.scene_vertical = QDoubleSpinBox()
         self.scene_vertical.setRange(0.5, 10.0)
         self.scene_vertical.setDecimals(1)
@@ -80,7 +84,21 @@ class ModelToolsMixin:
             "sticks in the ParaView scene. They are NOT drilled trajectories."
         )
         scene_settings.addWidget(self.show_boreholes)
-        scene_settings.addStretch(1)
+        self._scene_palette = self.settings.value("3d_palette", "earth")
+        if self._scene_palette not in scene_style.PALETTE_LABELS:
+            self._scene_palette = "earth"
+        self._scene_edges = self._scene_setting_bool("3d_edges", False)
+        self._scene_orientation = self._scene_setting_bool(
+            "3d_orientation", True
+        )
+        self._scene_bounds = self._scene_setting_bool("3d_bounds", False)
+        self.scene_look_button = QPushButton("Scene look…")
+        self.scene_look_button.setToolTip(
+            "Choose formation colours, optional mesh outlines and a "
+            "local XYZ orientation/extent guide. Dark background: #212121."
+        )
+        self.scene_look_button.clicked.connect(self._edit_scene_look)
+        scene_settings.addWidget(self.scene_look_button)
         layout.addLayout(scene_settings)
         buttons=QHBoxLayout()
         for text,action in (
@@ -108,6 +126,68 @@ class ModelToolsMixin:
         # must not disappear behind fixed explanatory widgets.
         tabs.insertTab(0,tab,"3D Models")
         self.refresh_models()
+
+    def _scene_setting_bool(self, key, default):
+        raw = self.settings.value(key, default)
+        return str(raw).strip().lower() in ("true", "1", "yes")
+
+    def _edit_scene_look(self):
+        # Subsurface modelling conventions, not a cloned vendor interface.
+        dialog = QDialog(self)
+        dialog.setWindowTitle("ParaView · GroundSurf geological scene")
+        dialog.setMinimumWidth(475)
+        form = QFormLayout(dialog)
+        heading = QLabel(
+            "Background: #212121 (charcoal) · independent strata colours."
+        )
+        heading.setWordWrap(True)
+        form.addRow(heading)
+        palette = QComboBox()
+        for key, label in scene_style.PALETTE_LABELS.items():
+            palette.addItem(label, key)
+        index = palette.findData(self._scene_palette)
+        palette.setCurrentIndex(max(0, index))
+        form.addRow("Formation colours", palette)
+        edges = QCheckBox("Show geological formation outlines")
+        edges.setChecked(self._scene_edges)
+        form.addRow(edges)
+        orientation = QCheckBox("Show the 3D XYZ orientation axes")
+        orientation.setChecked(self._scene_orientation)
+        form.addRow(orientation)
+        bounds = QCheckBox("Show local XYZ bounding box and labels")
+        bounds.setChecked(self._scene_bounds)
+        form.addRow(bounds)
+        warning = QLabel(
+            "A local XYZ box is not a georeferenced map. Colours show "
+            "stratigraphic identity, not temperature, certainty or hazard. "
+            "These settings affect display only."
+        )
+        warning.setWordWrap(True)
+        form.addRow(warning)
+        buttons = QDialogButtonBox(
+            QDialogButtonBox.StandardButton.Ok
+            | QDialogButtonBox.StandardButton.Cancel
+        )
+        buttons.accepted.connect(dialog.accept)
+        buttons.rejected.connect(dialog.reject)
+        form.addRow(buttons)
+        if dialog.exec() != QDialog.DialogCode.Accepted:
+            return
+        self._scene_palette = palette.currentData()
+        self._scene_edges = edges.isChecked()
+        self._scene_orientation = orientation.isChecked()
+        self._scene_bounds = bounds.isChecked()
+        for key, value in (
+            ("3d_palette", self._scene_palette),
+            ("3d_edges", self._scene_edges),
+            ("3d_orientation", self._scene_orientation),
+            ("3d_bounds", self._scene_bounds),
+        ):
+            self.settings.setValue(key, value)
+        self.status.setText(
+            f"Next ParaView scene: {scene_style.PALETTE_LABELS[self._scene_palette]} "
+            "on #212121. Changes affect newly built models only."
+        )
 
     def refresh_models(self):
         if not hasattr(self,"model_table"):
@@ -225,6 +305,10 @@ class ModelToolsMixin:
                 constraints["provenance"],warnings=constraints["warnings"],
                 vertical_exaggeration=self.scene_vertical.value(),
                 show_boreholes=self.show_boreholes.isChecked(),
+                palette=self._scene_palette,
+                show_edges=self._scene_edges,
+                show_orientation=self._scene_orientation,
+                show_bounds=self._scene_bounds,
             )
             if self.model_source.currentData() == "local_xyz":
                 # Persist the translation required to reconstruct original
