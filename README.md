@@ -1,11 +1,11 @@
-# GroundSurf Geothermal 0.4.6 — PointZ contact import from QGIS
+# GroundSurf Geothermal 0.4.7 — Safe local XYZ or mapped QGIS importing
 
 An experimental **local-first QGIS plugin** for managing wells, map layers and a
 versioned geological project database. Version 0.4 adds a **preliminary 3D
 interpolation engine** for shared geological contacts. It is not a validated
 geothermal simulator or professional structural modelling replacement.
 
-## What works in 0.4.6
+## What works in 0.4.7
 
 - Create/open a local **GeoPackage (.gpkg)** project.
 - Store well point geometries (EPSG:4326 WGS84), depths and elevations.
@@ -41,6 +41,13 @@ geothermal simulator or professional structural modelling replacement.
   The QGIS source layer and its original CRS are never changed.
 - Preliminary 3D models can explicitly use original Z contact elevations
   rather than well-log depths, if a common vertical reference is supplied.
+- **Local XYZ in metres, no verified geographic CRS:** keep arbitrary
+  engineering XY and Z data separately in the GroundSurf GeoPackage.
+  View 10 unlocated boreholes/50 stratigraphic contacts in **Local XYZ**
+  without creating false WGS84 well locations.
+- **3D Models → LOCAL XYZ (metres, NO geographic CRS):** interpolate
+  geological horizons inside the source coordinate frame, centred around a
+  reversible local XY origin, and open the resulting model in ParaView.
 - No remote service, account, uploaded site data or GitHub runtime required.
 
 ## Important data conventions
@@ -244,6 +251,66 @@ Source Z elevations remain independent from well-log depth intervals.
 The uppermost observed contact is not assumed to be terrain, ground
 elevation or completed well depth.
 
+### When source XY are metres but the CRS is unknown (new in 0.4.7)
+
+**You do not need to pretend that source XY are EPSG:4326 to make a
+preliminary 3D scene in ParaView.**
+
+For a dataset whose point geometry contains numbers like
+`X=600200, Y=5840100, Z=-145`, the X/Y values are not geographic
+longitude and latitude. If these represent distances **in metres** in
+one local engineering frame, you can build a local model *without*
+knowing where that frame sits on the Earth.
+
+1. Open your existing `BH_logs` layer in QGIS.
+2. Open a local GroundSurf GeoPackage project.
+3. Select **Import from QGIS → BH_logs** and choose
+   **Import local XYZ metres (NO map CRS; usable in ParaView)**.
+   For a layer declaring a geographic CRS with invalid coordinate
+   magnitudes, this option is suggested automatically.
+4. Review the field mappings: `ID` (well), `Strata` (unit),
+   `X`, `Y` (horizontal), and `Z` (source contact height).
+   Select either point geometry or attribute X/Y and Z.
+5. **Explicitly check that X, Y and Z are in metres and share a
+   consistent local coordinate basis.** This is an input requirement,
+   not something GroundSurf can infer from the numbers alone.
+6. Optionally enter the source's vertical reference name.
+   If unknown, leave it unverified; the scene remains a conceptual
+   local model and cannot be tied to a surveyed ground elevation.
+7. Click **Preview LOCAL XYZ**. Review the number of unique
+   boreholes and all geological units; ambiguous duplicate unit Z
+   values are flagged, not silently replaced.
+8. Confirm. The records appear in GroundSurf's **Local XYZ** tab
+   (with source X, Y and Z preserved), *not* the worldwide map Wells
+   layer or the georeferenced Z Contacts tab.
+9. Open **3D Models**, select **LOCAL XYZ (metres, NO geographic CRS)**,
+   then click **Build model**. Review the source warnings and save the
+   resulting `model.vtm` and `model.json`.
+10. Use **Open in ParaView**. Coordinates use a locally centred
+    scene: `X_local = X_source - X_origin` and
+    `Y_local = Y_source - Y_origin`, while `Z_local = Z_source`.
+    All scene coordinates remain in the user-confirmed metre units.
+    `model.json` preserves the origin offset, provenance, original
+    XY values and the **ungrounded/ungeoreferenced** coordinate label.
+
+**What this does NOT do:** establish where the boreholes are on the
+world map, turn a false layer CRS into a true one, perform a Web
+Mercator scale correction, or make the source Z an independently
+surveyed elevation. A later GIS overlay still requires identifying the
+actual source CRS from survey metadata and performing a real CRS
+transformation. Do **not** invent a plausible EPSG code.
+
+Caution: source values expressed in metres need not correspond to
+undistorted ground metres. For example, Web Mercator has variable
+ground-scale distortion. A local translation preserves distances
+in the source coordinate system; it does not remove map projection
+distortion. Use appropriate verified metric/projected coordinates
+for engineering interpretation.
+
+This separation is intentional. A **local 3D geological model** can be
+visually useful before a site's geographic position is available;
+**GIS-referenced reports and overlays** cannot.
+
 ### CSV columns
 
 Mandatory: `well_id,name,latitude,longitude`
@@ -363,6 +430,7 @@ QT_QPA_PLATFORM=offscreen PYTHONPATH=. /usr/bin/python3 tools/smoke_qgis_import_
 QT_QPA_PLATFORM=offscreen PYTHONPATH=. /usr/bin/python3 tools/smoke_grouped_v044.py
 QT_QPA_PLATFORM=offscreen PYTHONPATH=. /usr/bin/python3 tools/smoke_crs_v045.py
 QT_QPA_PLATFORM=offscreen PYTHONPATH=. /usr/bin/python3 tools/smoke_pointz_v046.py
+QT_QPA_PLATFORM=offscreen PYTHONPATH=. /usr/bin/python3 tools/smoke_local_xyz_v047.py
 python3 tools/build_zip.py
 ```
 
@@ -391,6 +459,8 @@ QGIS runtime compatibility beyond the tested installation is not guaranteed.
 - `groundsurf_geothermal/elevation_import.py` — PointZ/XYZ input validation.
 - `groundsurf_geothermal/contact_ui.py` — in-plugin Z Contacts table.
 - `groundsurf_geothermal/contact_adapter.py` — Z-based 3D surface input.
+- `groundsurf_geothermal/local_xyz.py` — separate local-metre XYZ store
+  (no assigned map CRS), preview and 3D model input.
 - `docs/ARCHITECTURE.md` — extensible module boundaries.
 
 **Local geological data and large files do not belong in GitHub.** Keep

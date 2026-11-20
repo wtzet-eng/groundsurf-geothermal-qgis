@@ -12,7 +12,7 @@ from qgis.PyQt.QtWidgets import (
     QMessageBox, QPushButton, QTableWidget, QTableWidgetItem,
     QVBoxLayout, QWidget,
 )
-from . import model_adapter, contact_adapter, model_core, models
+from . import model_adapter, contact_adapter, local_xyz, model_core, models
 
 
 class ModelToolsMixin:
@@ -36,6 +36,9 @@ class ModelToolsMixin:
         )
         self.model_source.addItem(
             "Imported contact Z elevations (source vertical datum)", "z_contacts"
+        )
+        self.model_source.addItem(
+            "LOCAL XYZ (metres, NO geographic CRS) → ParaView", "local_xyz"
         )
         layout.addWidget(self.model_source)
         model_note = QLabel(
@@ -96,7 +99,15 @@ class ModelToolsMixin:
         if not self._require_project():
             return
         try:
-            if self.model_source.currentData() == "z_contacts":
+            if self.model_source.currentData() == "local_xyz":
+                selected_batch=self.local_batch_combo.currentData()
+                if selected_batch is None:
+                    raise ValueError(
+                        "Import metre-based local XYZ contacts into GroundSurf "
+                        "and select a source dataset in the Local XYZ tab first."
+                    )
+                constraints=local_xyz.model_inputs(self.path, selected_batch)
+            elif self.model_source.currentData() == "z_contacts":
                 constraints=contact_adapter.gather_contacts(
                     self.path, self.well_layer
                 )
@@ -139,7 +150,16 @@ class ModelToolsMixin:
             f"Vertical datum: {constraints['datum']}\n"
             f"Method: {method}\n"
             f"Output: {directory}\n\n"
-            "Contact elevations and well-log depths are separate evidence "
+            + (
+                "IMPORTANT: These are UNLOCATED source coordinates in assumed "
+                "metres. The ParaView local origin shift is recorded in "
+                "model.json. The scene cannot be overlaid correctly on a "
+                "world map until the true source CRS is independently "
+                "identified. Web Mercator map scale may distort distances.\n\n"
+                if self.model_source.currentData() == "local_xyz"
+                else ""
+            )
+            + "Contact elevations and well-log depths are separate evidence "
             "types. Only conceptual horizons within the well footprint are "
             "modelled. No fault surfaces, geothermal flow or independent "
             "vertical-datum verification. Review imported ambiguities."
@@ -174,6 +194,21 @@ class ModelToolsMixin:
                 mesh,output,name,constraints["epsg"],constraints["datum"],
                 constraints["provenance"],warnings=constraints["warnings"]
             )
+            if self.model_source.currentData() == "local_xyz":
+                # Persist the translation required to reconstruct original
+                # source XYZ from the ParaView-local coordinates.
+                raw=json.loads(manifest.read_text(encoding="utf-8"))
+                raw["georeferenced"]=False
+                raw["coordinate_basis"]=local_xyz.BASIS
+                raw["local_origin_m"]=constraints["local_origin_m"]
+                raw["input_batch_id"]=constraints["batch_id"]
+                raw["horizontal_units"]="m (user-assumed)"
+                raw["vertical_units"]="m (user-assumed)"
+                raw["source_coordinates"]="local Cartesian, no EPSG"
+                manifest.write_text(
+                    json.dumps(raw, ensure_ascii=False, indent=2)+"\n",
+                    encoding="utf-8"
+                )
             models.record(
                 self.path,name,output,constraints["epsg"],constraints["datum"],
                 len(constraints["samples"]),source_hash,method

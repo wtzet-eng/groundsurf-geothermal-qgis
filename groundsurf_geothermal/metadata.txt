@@ -2,11 +2,11 @@
 name=GroundSurf Geothermal
 qgisMinimumVersion=3.34
 qgisMaximumVersion=3.99
-description=Import PointZ contact elevations from QGIS, choose source CRS, and inspect wells or model 3D geology.
-version=0.4.6
+description=Import projected or local XYZ boreholes, review contacts, and export conceptual 3D geology to ParaView.
+version=0.4.7
 author=GroundSurf
 email=tzuk.ls@outlook.com
-about=Experimental offline QGIS 3.34+ geological modelling: import ID/X/Y/Z/Strata PointZ contacts or depth-based logs from open QGIS layers, select correct horizontal CRS without modifying originals, browse contacts, create preliminary 3D surfaces and ParaView exports. Not a validated geothermal solver. Built-in Python standard library only; external ParaView is optional for 3D viewing. No validated geothermal simulation or server transfer. Feedback: tzuk.ls@outlook.com. Tutorials: https://www.youtube.com/@Ground-Surf.
+about=Experimental offline QGIS 3.34+ workbench. Import PointZ ID/X/Y/Z/Strata from open QGIS; correct a known source CRS for mapped work, OR keep metre XYZ in an explicitly ungeoreferenced local project dataset and export to ParaView. Store observed contact elevations separately from well-log depths. Preliminary IDW 3D only. Built-in Python standard library only; external ParaView is optional for 3D viewing. No validated geothermal simulation or server transfer. Feedback: tzuk.ls@outlook.com. Tutorials: https://www.youtube.com/@Ground-Surf.
 category=Database
 tags=geothermal,groundwater,wells,geology,geopackage
 homepage=https://github.com/wtzet-eng/groundsurf-geothermal-qgis
