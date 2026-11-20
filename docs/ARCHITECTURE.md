@@ -1,4 +1,4 @@
-# GroundSurf Geothermal architecture — v0.4.7
+# GroundSurf Geothermal architecture — v0.4.8
 
 ## Stable boundaries
 
@@ -188,3 +188,20 @@ preserved in the contact store. These scenes must never be overlaid
 on a geographic QGIS map without independently verifying the source
 CRS and proper horizontal transformation. Translating Web Mercator
 coordinates is not a correction for its map-scale distortion.
+
+
+## Compact dock navigation and 3D model access (0.4.8)
+
+The QGIS dock's primary grid provides Import from QGIS, one-click 3D
+Models and New/Open project. Six low-frequency tools remain in
+an accessible toggle-controlled secondary grid, whose state is saved
+in QSettings. Existing command handlers are unchanged.
+
+The modeller is the first, permanently visible tab even when the
+QTabBar must scroll the other views. Project Explorer headings route
+to the corresponding existing tab, and the vertical splitter has
+non-collapsible children and a usable explorer minimum height.
+Model export, output-folder access and ParaView launch share one
+horizontal toolbar, freeing the model catalogue's table viewport.
+A QGIS 3.34/Qt5 offscreen layout smoke test checks navigation,
+expand/collapse behavior, table-row visibility and 640×900 layout.
