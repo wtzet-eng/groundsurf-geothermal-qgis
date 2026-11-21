@@ -31,3 +31,7 @@ __pycache__/
 .venv/
 dist/
 build/
+
+# Experimental browser assets from separate Studio source. Generated locally;
+# DO NOT publish without source provenance and third-party licence review.
+groundsurf_geothermal/web_studio/
