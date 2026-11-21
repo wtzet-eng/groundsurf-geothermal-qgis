@@ -1,11 +1,32 @@
-# GroundSurf Geothermal 0.4.13 — Separate modelling Studio and reliable ParaView opening
+# Studio by GroundSurf 0.4.14 — Separate modelling Studio and reliable ParaView opening
 
 An experimental **local-first QGIS plugin** for managing wells, map layers and a
 versioned geological project database. Version 0.4 adds a **preliminary 3D
 interpolation engine** for shared geological contacts. It is not a validated
 geothermal simulator or professional structural modelling replacement.
 
-## What works in 0.4.13
+## Naming and optional desktop companion (0.4.14)
+
+**Studio by GroundSurf** is the user-facing QGIS plugin name. The
+`groundsurf_geothermal` plugin directory, existing settings keys, GeoPackage
+schemas, model catalogue and original ParaView exports stay the same, so
+existing projects and QGIS plugin installations remain compatible.
+
+The existing **OPEN STUDIO** button still detaches the *same* QGIS
+editor/widgets into a bigger window; this is not the standalone desktop
+application. Under **More tools → Open desktop Studio**, you can launch the
+separate GroundSurf Studio app with the currently open local GeoPackage
+path. On the first use, choose its executable launcher if it is not already
+on your PATH. The Python app is a separate installation and is not bundled
+inside the QGIS plugin ZIP. No data are uploaded, and source QGIS layers
+are not modified by launching the app.
+
+The desktop app is called **GroundSurf Studio**, while the website and
+Site Intelligence plugin retain their existing names. Previous
+`GroundSurf Geothermal` references embedded in model manifests and
+database checks are intentionally preserved for backward compatibility.
+
+## What works in 0.4.14
 
 - Create/open a local **GeoPackage (.gpkg)** project.
 - Store well point geometries (EPSG:4326 WGS84), depths and elevations.

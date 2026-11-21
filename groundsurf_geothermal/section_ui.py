@@ -20,7 +20,7 @@ class SectionWindow(QDialog):
         self.well_layer = well_layer
         self.section_id = section_id
         self.dark = dark
-        self.setWindowTitle("GroundSurf Geothermal · Geological cross-section")
+        self.setWindowTitle("Studio by GroundSurf · Geological cross-section")
         self.resize(1190, 730)
         self.setMinimumSize(420, 360)
         self.setAttribute(Qt.WidgetAttribute.WA_DeleteOnClose, False)

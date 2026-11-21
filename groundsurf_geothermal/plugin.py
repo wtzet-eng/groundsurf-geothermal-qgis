@@ -1,8 +1,9 @@
-"""GroundSurf Geothermal 0.4.13: local and mapped geological workspace."""
+"""Studio by GroundSurf 0.4.14: QGIS geological modelling workspace."""
 import os
+from shutil import which
 from pathlib import Path
 
-from qgis.PyQt.QtCore import QSettings, Qt, QUrl
+from qgis.PyQt.QtCore import QProcess, QProcessEnvironment, QSettings, Qt, QUrl
 from qgis.PyQt.QtGui import QIcon, QDesktopServices
 from qgis.PyQt.QtWidgets import (
     QAction, QDialog, QDialogButtonBox, QDockWidget, QFileDialog, QFormLayout,
@@ -32,11 +33,11 @@ class GroundSurfGeothermalPlugin:
 
     def initGui(self):
         self.action = QAction(
-            QIcon.fromTheme("applications-science"), "GroundSurf Geothermal",
+            QIcon.fromTheme("applications-science"), "Studio by GroundSurf",
             self.iface.mainWindow(),
         )
         self.action.triggered.connect(self.open_dock)
-        self.iface.addPluginToMenu("&GroundSurf Geothermal", self.action)
+        self.iface.addPluginToMenu("&Studio by GroundSurf", self.action)
         self.iface.addToolBarIcon(self.action)
 
     def open_dock(self):
@@ -54,7 +55,7 @@ class GroundSurfGeothermalPlugin:
             for layer_id in getattr(self.dock, "_preview_line_ids", {}).values():
                 QgsProject.instance().removeMapLayer(layer_id)
         if self.action is not None:
-            self.iface.removePluginMenu("&GroundSurf Geothermal", self.action)
+            self.iface.removePluginMenu("&Studio by GroundSurf", self.action)
             self.iface.removeToolBarIcon(self.action)
         if self.dock is not None:
             self.iface.removeDockWidget(self.dock)
@@ -73,7 +74,7 @@ class _GeothermalStudioWindow(QDialog):
     def __init__(self, owner):
         super().__init__(owner.iface.mainWindow(), Qt.WindowType.Window)
         self.owner = owner
-        self.setWindowTitle("GroundSurf Geothermal · Modelling Studio")
+        self.setWindowTitle("Studio by GroundSurf · QGIS workspace")
         self.setObjectName("GroundSurfGeothermalStudio")
         self.setAttribute(Qt.WidgetAttribute.WA_DeleteOnClose, True)
         self.setMinimumSize(690, 465)
@@ -100,7 +101,7 @@ class _GeothermalStudioWindow(QDialog):
 class GeothermalDock(ContactToolsMixin, ModelToolsMixin,
                      SectionToolsMixin, WellManagerMixin, QDockWidget):
     def __init__(self, iface, parent=None):
-        super().__init__("GroundSurf Geothermal", parent)
+        super().__init__("Studio by GroundSurf · Geology", parent)
         self.iface = iface
         self.path = None
         self.well_layer = None
@@ -129,7 +130,7 @@ class GeothermalDock(ContactToolsMixin, ModelToolsMixin,
         self.main_layout = outer
         outer.setContentsMargins(9, 8, 9, 8)
         outer.setSpacing(5)
-        heading = QLabel("GroundSurf  /  GEOTHERMAL")
+        heading = QLabel("STUDIO BY GROUNDSURF  /  GEOLOGY")
         heading.setObjectName("gsHeading")
         outer.addWidget(heading)
         description = QLabel("Wells · Logs · 3D Models · Maps")
@@ -182,6 +183,7 @@ class GeothermalDock(ContactToolsMixin, ModelToolsMixin,
             ("Relink map", self.relink_map),
             ("Switch theme", self.toggle_theme),
             ("Help & feedback", self.open_help),
+            ("Open desktop Studio", self.launch_desktop_studio),
         )):
             button = QPushButton(name)
             button.clicked.connect(handler)
@@ -237,7 +239,7 @@ class GeothermalDock(ContactToolsMixin, ModelToolsMixin,
         self.info = QTextEdit()
         self.info.setReadOnly(True)
         self.info.setPlainText(
-            "GroundSurf Geothermal 0.4.13\n\n"
+            "Studio by GroundSurf 0.4.14\n\n"
             "Local GeoPackage projects and WGS84 well locations.\n"
             "Depths: metres, positive downward.\n"
             "Elevations: metres, datum supplied by user.\n\n"
@@ -248,7 +250,7 @@ class GeothermalDock(ContactToolsMixin, ModelToolsMixin,
         tabs.addTab(self.info, "Details")
         help_tab = QWidget()
         help_layout = QVBoxLayout(help_tab)
-        contact_header = QLabel("Questions or suggestions for GroundSurf Geothermal?")
+        contact_header = QLabel("Questions or suggestions for Studio by GroundSurf?")
         contact_header.setWordWrap(True)
         help_layout.addWidget(contact_header)
         email_label = QLabel("Feedback: tzuk.ls@outlook.com")
@@ -257,7 +259,7 @@ class GeothermalDock(ContactToolsMixin, ModelToolsMixin,
         contact = QPushButton("Email feedback")
         contact.clicked.connect(
             lambda: QDesktopServices.openUrl(
-                QUrl("mailto:tzuk.ls@outlook.com?subject=GroundSurf%20Geothermal%20feedback")
+                QUrl("mailto:tzuk.ls@outlook.com?subject=Studio%20by%20GroundSurf%20feedback")
             )
         )
         help_layout.addWidget(contact)
@@ -401,6 +403,48 @@ class GeothermalDock(ContactToolsMixin, ModelToolsMixin,
         self.tabs.setCurrentIndex(self.help_tab_index)
         self.open_studio()
 
+    def launch_desktop_studio(self):
+        """Launch an independent, opt-in Studio process, not another Qt window.
+
+        The QGIS project file is passed only as an explicit local path.
+        Preserve the existing plugin ID/settings and do not import the desktop
+        application's Python or Qt modules into the QGIS process.
+        """
+        launcher = str(self.settings.value("desktop_studio_launcher", "") or "").strip()
+        if not launcher or not (Path(launcher).is_file() and os.access(launcher, os.X_OK)):
+            launcher = which("groundsurf-studio") or which("groundsurf-ai-studio") or ""
+        if not launcher:
+            launcher, _ = QFileDialog.getOpenFileName(
+                self, "Choose GroundSurf Studio desktop launcher",
+                str(Path.home()), "Executable files (*.sh *.AppImage);;All files (*)",
+            )
+            if not launcher:
+                return
+        launcher_path = Path(launcher).expanduser()
+        if not (launcher_path.is_file() and os.access(launcher_path, os.X_OK)):
+            self._error("Cannot launch GroundSurf Studio",
+                        ValueError("Choose an executable GroundSurf Studio launcher or AppImage."))
+            return
+
+        process = QProcess(self)
+        env = QProcessEnvironment.systemEnvironment()
+        # A separate PyQt runtime should not inherit QGIS's Qt/Python plugin paths.
+        for key in ("QT_PLUGIN_PATH", "QT_QPA_PLATFORM_PLUGIN_PATH",
+                    "PYTHONPATH", "PYTHONHOME", "QGIS_PREFIX_PATH"):
+            env.remove(key)
+        process.setProcessEnvironment(env)
+        process.setProgram(str(launcher_path.resolve()))
+        process.setArguments(["--project", str(self.path)] if self.path else [])
+        launched = process.startDetached()
+        if isinstance(launched, tuple):
+            launched = launched[0]
+        if not launched:
+            self._error("Cannot launch GroundSurf Studio",
+                        RuntimeError("Desktop process did not start. Check the launcher path."))
+            return
+        self.settings.setValue("desktop_studio_launcher", str(launcher_path.resolve()))
+        self.status.setText("GroundSurf Studio opened separately. QGIS data remains unchanged.")
+
     def toggle_theme(self):
         self.theme = "light" if self.theme == "dark" else "dark"
         self.settings.setValue("theme", self.theme)
@@ -411,7 +455,7 @@ class GeothermalDock(ContactToolsMixin, ModelToolsMixin,
         self.status.setText(message)
         # GroundSurf's own diagnostics persist in QGIS's Message Log,
         # instead of leaving only the unhelpful generic "Python error".
-        QgsMessageLog.logMessage(message, "GroundSurf Geothermal", Qgis.MessageLevel.Warning)
+        QgsMessageLog.logMessage(message, "Studio by GroundSurf", Qgis.MessageLevel.Warning)
         QMessageBox.warning(self, title, str(exc))
 
     def _require_project(self):
