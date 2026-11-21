@@ -1,4 +1,4 @@
-"""Studio by GroundSurf 0.4.14: QGIS geological modelling workspace."""
+"""Studio by GroundSurf: QGIS geological modelling workspace."""
 import os
 from shutil import which
 from pathlib import Path
@@ -16,6 +16,7 @@ from qgis.core import (
     QgsProviderRegistry, QgsRasterLayer, QgsVectorLayer,
 )
 from . import db, storage
+from .browser_studio import BrowserStudio
 from .well_manager import WellManagerMixin
 from .section_ui import SectionToolsMixin
 from .model_ui import ModelToolsMixin
@@ -50,6 +51,8 @@ class GroundSurfGeothermalPlugin:
     def unload(self):
         if self.dock is not None:
             self.dock.close_studio()
+            if getattr(self.dock, "_browser_studio", None):
+                self.dock._browser_studio.stop()
             if getattr(self.dock, "_section_window", None):
                 self.dock._section_window.close()
             for layer_id in getattr(self.dock, "_preview_line_ids", {}).values():
@@ -109,6 +112,7 @@ class GeothermalDock(ContactToolsMixin, ModelToolsMixin,
         self.map_registry = {}
         self._preview_line_ids = {}
         self._studio_window = None
+        self._browser_studio = None
         self.settings = QSettings("GroundSurf", "Geothermal")
         self.theme = self.settings.value("theme", "dark")
         self.setObjectName("GroundSurfGeothermalDock")
@@ -184,6 +188,7 @@ class GeothermalDock(ContactToolsMixin, ModelToolsMixin,
             ("Switch theme", self.toggle_theme),
             ("Help & feedback", self.open_help),
             ("Open desktop Studio", self.launch_desktop_studio),
+            ("Open Studio in browser (preview)", self.open_browser_studio),
         )):
             button = QPushButton(name)
             button.clicked.connect(handler)
@@ -402,6 +407,26 @@ class GeothermalDock(ContactToolsMixin, ModelToolsMixin,
     def open_help(self):
         self.tabs.setCurrentIndex(self.help_tab_index)
         self.open_studio()
+
+    def open_browser_studio(self):
+        """Open bundled Studio assets locally, without a desktop installation.
+
+        This initial experiment intentionally does NOT expose GeoPackages or
+        arbitrary project directories to the browser server. Users explicitly
+        select their exported VTP/VTU files from the local file chooser.
+        """
+        try:
+            if self._browser_studio is None:
+                assets = Path(__file__).resolve().parent / "web_studio"
+                self._browser_studio = BrowserStudio(assets)
+            url = self._browser_studio.start()
+            if not QDesktopServices.openUrl(QUrl(url)):
+                raise RuntimeError("Could not open the default browser")
+            self.status.setText(
+                "Local Studio browser preview opened. Import VTP/VTU files "
+                "through QGIS Scene; no project files are hosted.")
+        except Exception as error:
+            self._error("Cannot open Studio browser preview", error)
 
     def launch_desktop_studio(self):
         """Launch an independent, opt-in Studio process, not another Qt window.
