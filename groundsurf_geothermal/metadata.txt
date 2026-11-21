@@ -1,14 +1,14 @@
 [general]
-name=GroundSurf Geothermal
+name=Studio by GroundSurf
 qgisMinimumVersion=3.34
 qgisMaximumVersion=3.99
-description=Import QGIS geology into a separate Modelling Studio and open ParaView scenes reliably.
-version=0.4.13
+description=Local-first geological and geothermal modelling from QGIS; launch GroundSurf Studio and visualise models in ParaView.
+version=0.4.14
 author=GroundSurf
 email=tzuk.ls@outlook.com
-about=Experimental offline QGIS 3.34+ workbench. Import PointZ ID/X/Y/Z/Strata from open QGIS; correct a known source CRS for mapped work, OR keep metre XYZ in an explicitly ungeoreferenced local project dataset and export to ParaView with stable geological colours, source-contact markers and data-coverage distance. Store contact elevations separately from well-log depths. Preliminary IDW 3D only. Built-in Python standard library only; external ParaView is optional for 3D viewing. No validated geothermal simulation or server transfer. Feedback: tzuk.ls@outlook.com. Tutorials: https://www.youtube.com/@Ground-Surf.
+about=Studio by GroundSurf (formerly GroundSurf Geothermal). Experimental offline QGIS 3.34+ workbench. The optional separate GroundSurf Studio desktop launcher accepts an explicit local project path. Import PointZ ID/X/Y/Z/Strata from open QGIS; correct a known source CRS for mapped work, OR keep metre XYZ in an explicitly ungeoreferenced local project dataset and export to ParaView with stable geological colours, source-contact markers and data-coverage distance. Store contact elevations separately from well-log depths. Preliminary IDW 3D only. Built-in Python standard library only; external ParaView is optional for 3D viewing. No validated geothermal simulation or server transfer. Feedback: tzuk.ls@outlook.com. Tutorials: https://www.youtube.com/@Ground-Surf.
 category=Database
-tags=geothermal,groundwater,wells,geology,geopackage
+tags=groundsurf,studio,geothermal,groundwater,wells,geology,geopackage
 homepage=https://github.com/wtzet-eng/groundsurf-geothermal-qgis
 repository=https://github.com/wtzet-eng/groundsurf-geothermal-qgis
 tracker=https://github.com/wtzet-eng/groundsurf-geothermal-qgis/issues

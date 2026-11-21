@@ -1,4 +1,4 @@
-"""GroundSurf Geothermal QGIS plugin. Importable without QGIS for testing."""
+"""Studio by GroundSurf QGIS plugin. Importable without QGIS for testing."""
 
 
 def classFactory(iface):

@@ -237,7 +237,7 @@ class ModelToolsMixin:
             self._error("Cannot prepare 3D model",exc)
             return
         name,ok=QInputDialog.getText(
-            self,"GroundSurf Geothermal 3D","Model name",
+            self,"Studio by GroundSurf 3D","Model name",
             text=f"Conceptual model {datetime.now(timezone.utc):%Y-%m-%d}"
         )
         if not ok:
