@@ -1,0 +1,651 @@
+{
+  "version": "1.0",
+  "planSchema": {
+    "type": "object",
+    "properties": {
+      "version": {
+        "type": "string",
+        "enum": [
+          "1.0"
+        ]
+      },
+      "steps": {
+        "type": "array",
+        "items": {
+          "type": "string",
+          "enum": [
+            "inspect_project",
+            "inspect_layers",
+            "define_area",
+            "discover_data",
+            "acquire_landscape",
+            "prepare_dem",
+            "prepare_imagery",
+            "align_rasters",
+            "validate_coordinates",
+            "prepare_vectors",
+            "create_transfer_package",
+            "validate_transfer_package",
+            "open_studio"
+          ]
+        },
+        "minItems": 1,
+        "maxItems": 13
+      }
+    },
+    "required": [
+      "version",
+      "steps"
+    ],
+    "additionalProperties": false
+  },
+  "tools": [
+    {
+      "id": "inspect_project",
+      "title": "Inspect project",
+      "purpose": "Summarise project CRS and layer count",
+      "permissions": [
+        "read"
+      ],
+      "cost": "low",
+      "validation": "Current project exists",
+      "provenance": "Project CRS and layer count",
+      "inputSchema": {
+        "type": "object",
+        "properties": {},
+        "additionalProperties": false
+      },
+      "outputSchema": {
+        "type": "object",
+        "properties": {
+          "status": {
+            "enum": [
+              "completed",
+              "handoff",
+              "cancelled",
+              "failed"
+            ]
+          },
+          "detail": {
+            "type": "string"
+          },
+          "tool": {
+            "type": "string"
+          },
+          "version": {
+            "const": "1.0"
+          }
+        },
+        "required": [
+          "version",
+          "tool",
+          "status",
+          "detail"
+        ],
+        "additionalProperties": false
+      },
+      "sideEffects": "Reads the active local project"
+    },
+    {
+      "id": "inspect_layers",
+      "title": "Inspect layers",
+      "purpose": "Summarise evidence roles and missing CRS",
+      "permissions": [
+        "read"
+      ],
+      "cost": "low",
+      "validation": "Current project exists",
+      "provenance": "Layer kinds, role hints and CRS status",
+      "inputSchema": {
+        "type": "object",
+        "properties": {},
+        "additionalProperties": false
+      },
+      "outputSchema": {
+        "type": "object",
+        "properties": {
+          "status": {
+            "enum": [
+              "completed",
+              "handoff",
+              "cancelled",
+              "failed"
+            ]
+          },
+          "detail": {
+            "type": "string"
+          },
+          "tool": {
+            "type": "string"
+          },
+          "version": {
+            "const": "1.0"
+          }
+        },
+        "required": [
+          "version",
+          "tool",
+          "status",
+          "detail"
+        ],
+        "additionalProperties": false
+      },
+      "sideEffects": "Reads the active local project"
+    },
+    {
+      "id": "define_area",
+      "title": "Define area",
+      "purpose": "Read the selected Connect area and its CRS",
+      "permissions": [
+        "read"
+      ],
+      "cost": "low",
+      "validation": "Nonempty valid extent or polygon with CRS",
+      "provenance": "Area source, CRS and extent",
+      "inputSchema": {
+        "type": "object",
+        "properties": {},
+        "additionalProperties": false
+      },
+      "outputSchema": {
+        "type": "object",
+        "properties": {
+          "status": {
+            "enum": [
+              "completed",
+              "handoff",
+              "cancelled",
+              "failed"
+            ]
+          },
+          "detail": {
+            "type": "string"
+          },
+          "tool": {
+            "type": "string"
+          },
+          "version": {
+            "const": "1.0"
+          }
+        },
+        "required": [
+          "version",
+          "tool",
+          "status",
+          "detail"
+        ],
+        "additionalProperties": false
+      },
+      "sideEffects": "Reads the active local project"
+    },
+    {
+      "id": "discover_data",
+      "title": "Compare geographical sources",
+      "purpose": "Inspect the local regional catalogue and manual search alternatives",
+      "permissions": [
+        "read"
+      ],
+      "cost": "low",
+      "validation": "Valid area in geographical coordinates",
+      "provenance": "Catalogue links, roles, access and limitations",
+      "inputSchema": {
+        "type": "object",
+        "properties": {},
+        "additionalProperties": false
+      },
+      "outputSchema": {
+        "type": "object",
+        "properties": {
+          "status": {
+            "enum": [
+              "completed",
+              "handoff",
+              "cancelled",
+              "failed"
+            ]
+          },
+          "detail": {
+            "type": "string"
+          },
+          "tool": {
+            "type": "string"
+          },
+          "version": {
+            "const": "1.0"
+          }
+        },
+        "required": [
+          "version",
+          "tool",
+          "status",
+          "detail"
+        ],
+        "additionalProperties": false
+      },
+      "sideEffects": "Reads the active local project"
+    },
+    {
+      "id": "acquire_landscape",
+      "title": "Acquire terrain and aerial imagery",
+      "purpose": "Acquire a reviewed regional pair and build a transfer",
+      "permissions": [
+        "network acquisition",
+        "compute",
+        "write"
+      ],
+      "cost": "up to nine tile pairs",
+      "validation": "Reviewed adapter, bounded grid, confirmed network and new destination",
+      "provenance": "Source tiles, rights, CRS, datum, gridding and hashes",
+      "inputSchema": {
+        "type": "object",
+        "properties": {},
+        "additionalProperties": false
+      },
+      "outputSchema": {
+        "type": "object",
+        "properties": {
+          "status": {
+            "enum": [
+              "completed",
+              "handoff",
+              "cancelled",
+              "failed"
+            ]
+          },
+          "detail": {
+            "type": "string"
+          },
+          "tool": {
+            "type": "string"
+          },
+          "version": {
+            "const": "1.0"
+          }
+        },
+        "required": [
+          "version",
+          "tool",
+          "status",
+          "detail"
+        ],
+        "additionalProperties": false
+      },
+      "sideEffects": "Sends tile locations and writes a new transfer folder"
+    },
+    {
+      "id": "prepare_dem",
+      "title": "Prepare terrain",
+      "purpose": "Clip and warp a confirmed local elevation raster",
+      "permissions": [
+        "compute",
+        "write"
+      ],
+      "cost": "grid dependent",
+      "validation": "Local GeoTIFF, metre elevations, metric target, fresh output",
+      "provenance": "Source, grid, resampling",
+      "inputSchema": {
+        "type": "object",
+        "properties": {},
+        "additionalProperties": false
+      },
+      "outputSchema": {
+        "type": "object",
+        "properties": {
+          "status": {
+            "enum": [
+              "completed",
+              "handoff",
+              "cancelled",
+              "failed"
+            ]
+          },
+          "detail": {
+            "type": "string"
+          },
+          "tool": {
+            "type": "string"
+          },
+          "version": {
+            "const": "1.0"
+          }
+        },
+        "required": [
+          "version",
+          "tool",
+          "status",
+          "detail"
+        ],
+        "additionalProperties": false
+      },
+      "sideEffects": "Runs a local scientific operation"
+    },
+    {
+      "id": "prepare_imagery",
+      "title": "Prepare imagery",
+      "purpose": "Prepare selected RGB bands from a local raster",
+      "permissions": [
+        "compute",
+        "write"
+      ],
+      "cost": "grid dependent",
+      "validation": "Local GeoTIFF, valid RGB bands and fresh output",
+      "provenance": "Source, RGB bands, target grid",
+      "inputSchema": {
+        "type": "object",
+        "properties": {},
+        "additionalProperties": false
+      },
+      "outputSchema": {
+        "type": "object",
+        "properties": {
+          "status": {
+            "enum": [
+              "completed",
+              "handoff",
+              "cancelled",
+              "failed"
+            ]
+          },
+          "detail": {
+            "type": "string"
+          },
+          "tool": {
+            "type": "string"
+          },
+          "version": {
+            "const": "1.0"
+          }
+        },
+        "required": [
+          "version",
+          "tool",
+          "status",
+          "detail"
+        ],
+        "additionalProperties": false
+      },
+      "sideEffects": "Runs a local scientific operation"
+    },
+    {
+      "id": "align_rasters",
+      "title": "Align rasters",
+      "purpose": "Match RGB to the metric reference grid",
+      "permissions": [
+        "compute",
+        "write"
+      ],
+      "cost": "grid dependent",
+      "validation": "Square north-up reference pixels and fresh output",
+      "provenance": "Reference grid, CRS and resampling",
+      "inputSchema": {
+        "type": "object",
+        "properties": {},
+        "additionalProperties": false
+      },
+      "outputSchema": {
+        "type": "object",
+        "properties": {
+          "status": {
+            "enum": [
+              "completed",
+              "handoff",
+              "cancelled",
+              "failed"
+            ]
+          },
+          "detail": {
+            "type": "string"
+          },
+          "tool": {
+            "type": "string"
+          },
+          "version": {
+            "const": "1.0"
+          }
+        },
+        "required": [
+          "version",
+          "tool",
+          "status",
+          "detail"
+        ],
+        "additionalProperties": false
+      },
+      "sideEffects": "Runs a local scientific operation"
+    },
+    {
+      "id": "validate_coordinates",
+      "title": "Validate coordinates",
+      "purpose": "Inspect embedded affine transform, units and datum declaration",
+      "permissions": [
+        "read"
+      ],
+      "cost": "low",
+      "validation": "Local raster with embedded CRS",
+      "provenance": "CRS, transform, datum and units",
+      "inputSchema": {
+        "type": "object",
+        "properties": {},
+        "additionalProperties": false
+      },
+      "outputSchema": {
+        "type": "object",
+        "properties": {
+          "status": {
+            "enum": [
+              "completed",
+              "handoff",
+              "cancelled",
+              "failed"
+            ]
+          },
+          "detail": {
+            "type": "string"
+          },
+          "tool": {
+            "type": "string"
+          },
+          "version": {
+            "const": "1.0"
+          }
+        },
+        "required": [
+          "version",
+          "tool",
+          "status",
+          "detail"
+        ],
+        "additionalProperties": false
+      },
+      "sideEffects": "Reads the active local project"
+    },
+    {
+      "id": "prepare_vectors",
+      "title": "Prepare vector evidence",
+      "purpose": "Reproject and clip selected vector features",
+      "permissions": [
+        "compute",
+        "write"
+      ],
+      "cost": "feature dependent",
+      "validation": "Valid source, area, metric target and new GeoPackage",
+      "provenance": "Source, target CRS and clipping method",
+      "inputSchema": {
+        "type": "object",
+        "properties": {},
+        "additionalProperties": false
+      },
+      "outputSchema": {
+        "type": "object",
+        "properties": {
+          "status": {
+            "enum": [
+              "completed",
+              "handoff",
+              "cancelled",
+              "failed"
+            ]
+          },
+          "detail": {
+            "type": "string"
+          },
+          "tool": {
+            "type": "string"
+          },
+          "version": {
+            "const": "1.0"
+          }
+        },
+        "required": [
+          "version",
+          "tool",
+          "status",
+          "detail"
+        ],
+        "additionalProperties": false
+      },
+      "sideEffects": "Runs a local scientific operation"
+    },
+    {
+      "id": "create_transfer_package",
+      "title": "Prepare from local layers",
+      "purpose": "Prepare a common grid using human-selected local rasters",
+      "permissions": [
+        "compute",
+        "write"
+      ],
+      "cost": "up to 16 million cells",
+      "validation": "Confirmed metres, rights, datum, new output and aligned grids",
+      "provenance": "Inputs, roles, cutline, rights, grid and file hashes",
+      "inputSchema": {
+        "type": "object",
+        "properties": {},
+        "additionalProperties": false
+      },
+      "outputSchema": {
+        "type": "object",
+        "properties": {
+          "status": {
+            "enum": [
+              "completed",
+              "handoff",
+              "cancelled",
+              "failed"
+            ]
+          },
+          "detail": {
+            "type": "string"
+          },
+          "tool": {
+            "type": "string"
+          },
+          "version": {
+            "const": "1.0"
+          }
+        },
+        "required": [
+          "version",
+          "tool",
+          "status",
+          "detail"
+        ],
+        "additionalProperties": false
+      },
+      "sideEffects": "Runs a local scientific operation"
+    },
+    {
+      "id": "validate_transfer_package",
+      "title": "Validate transfer package",
+      "purpose": "Verify checksums, frame, grid and preview",
+      "permissions": [
+        "read",
+        "compute"
+      ],
+      "cost": "package dependent",
+      "validation": "All manifest and raster integrity checks pass",
+      "provenance": "Manifest version, checksums and spatial frame",
+      "inputSchema": {
+        "type": "object",
+        "properties": {},
+        "additionalProperties": false
+      },
+      "outputSchema": {
+        "type": "object",
+        "properties": {
+          "status": {
+            "enum": [
+              "completed",
+              "handoff",
+              "cancelled",
+              "failed"
+            ]
+          },
+          "detail": {
+            "type": "string"
+          },
+          "tool": {
+            "type": "string"
+          },
+          "version": {
+            "const": "1.0"
+          }
+        },
+        "required": [
+          "version",
+          "tool",
+          "status",
+          "detail"
+        ],
+        "additionalProperties": false
+      },
+      "sideEffects": "Reads the active local project"
+    },
+    {
+      "id": "open_studio",
+      "title": "Open GroundSurf Studio",
+      "purpose": "Launch a trusted local Studio build after validating the chosen transfer",
+      "permissions": [
+        "launch",
+        "compute"
+      ],
+      "cost": "package dependent",
+      "validation": "Validated package and user-selected separate Studio application",
+      "provenance": "Launch outcome and remaining browser folder selection",
+      "inputSchema": {
+        "type": "object",
+        "properties": {},
+        "additionalProperties": false
+      },
+      "outputSchema": {
+        "type": "object",
+        "properties": {
+          "status": {
+            "enum": [
+              "completed",
+              "handoff",
+              "cancelled",
+              "failed"
+            ]
+          },
+          "detail": {
+            "type": "string"
+          },
+          "tool": {
+            "type": "string"
+          },
+          "version": {
+            "const": "1.0"
+          }
+        },
+        "required": [
+          "version",
+          "tool",
+          "status",
+          "detail"
+        ],
+        "additionalProperties": false
+      },
+      "sideEffects": "Starts the system browser"
+    }
+  ]
+}

@@ -1,0 +1,33 @@
+<!doctype html><html lang="en"><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; img-src data:"><title>GroundSurf Connect · Terrain preview</title>
+<style>*{box-sizing:border-box}body{margin:0;background:#212121;color:#e4e0db;font:15px system-ui}main{height:100vh;display:grid;grid-template-rows:auto 1fr auto}header,footer{padding:14px 22px;display:flex;align-items:center;gap:18px;flex-wrap:wrap}header{border-bottom:1px solid #444}strong{font-size:18px}label:last-of-type{margin-left:auto}input{width:95px;accent-color:#b9a588}canvas{width:100%;height:100%;min-height:0;touch-action:none;cursor:grab}footer{font-size:13px;border-top:1px solid #444;color:#c1bdb7}button{background:#373737;color:inherit;border:1px solid #666;padding:5px 12px;border-radius:4px}</style>
+<main><header><strong>GroundSurf Connect</strong><span>Terrain preview</span><label>Imagery <input id="opacity" aria-label="Imagery opacity" type="range" min="0" max="1" step=".01" value="1"></label><button id="reset">Reset view</button></header><canvas id="terrain" tabindex="0" aria-label="Terrain. Drag or use arrow keys to rotate. Scroll or use plus and minus to zoom."></canvas><footer><span id="info"></span><span id="credit"></span><span>Drag to rotate · Scroll to zoom</span></footer></main>
+<script>
+'use strict';
+const p=JSON.parse(new TextDecoder().decode(Uint8Array.from(atob('__PAYLOAD__'),c=>c.charCodeAt(0))));
+const canvas=document.querySelector('canvas'),info=document.querySelector('#info');
+function start(){
+ const gl=canvas.getContext('webgl',{antialias:true,alpha:false});
+ if(!gl)throw Error('Enable WebGL to view the terrain.');
+ if(!Number.isInteger(p.nx)||!Number.isInteger(p.ny)||p.nx<2||p.ny<2||p.nx>160||p.ny>160||p.z.length!==p.nx*p.ny||p.u.length!==p.nx||p.v.length!==p.ny)throw Error('Invalid terrain mesh');
+ const values=p.z.filter(Number.isFinite),min=Math.min(...values),max=Math.max(...values);
+ info.textContent=p.role+' · '+min.toFixed(1)+'–'+max.toFixed(1)+' m · '+p.datum+' · preview samples';
+ document.querySelector('#credit').textContent=p.rights;
+ const prog=gl.createProgram();
+ function shader(type,source){const s=gl.createShader(type);gl.shaderSource(s,source);gl.compileShader(s);if(!gl.getShaderParameter(s,gl.COMPILE_STATUS))throw Error(gl.getShaderInfoLog(s));gl.attachShader(prog,s);}
+ shader(gl.VERTEX_SHADER,'attribute vec3 pos;attribute vec2 tex;uniform vec4 view;uniform float zoom;varying vec2 uv;varying float shade;void main(){float a=view.x,b=view.y;float x=cos(a)*pos.x-sin(a)*pos.y;float y=sin(a)*pos.x+cos(a)*pos.y;gl_Position=vec4(x*zoom/view.z,(sin(b)*y+cos(b)*pos.z)*zoom,(cos(b)*y-sin(b)*pos.z)*.22,1.);uv=tex;shade=.42+.35*pos.z;}');
+ shader(gl.FRAGMENT_SHADER,'precision mediump float;varying vec2 uv;varying float shade;uniform sampler2D photo;uniform float opacity;void main(){vec4 c=texture2D(photo,uv);gl_FragColor=vec4(mix(vec3(shade+.07,shade+.05,shade+.025),c.rgb,c.a*opacity),1.);}');
+ gl.linkProgram(prog);if(!gl.getProgramParameter(prog,gl.LINK_STATUS))throw Error('Graphics program failed');gl.useProgram(prog);
+ const vertices=[],indices=[],span=Math.max(p.width,p.height,max-min,1);
+ for(let y=0;y<p.ny;y++)for(let x=0;x<p.nx;x++){let i=y*p.nx+x;vertices.push((p.u[x]-.5)*p.width/span,(.5-p.v[y])*p.height/span,((p.z[i]??min)-(max+min)/2)/span,p.u[x],p.v[y]);if(x&&y){let a=i-p.nx-1,b=i-p.nx,c=i-1;for(let t of [[a,b,c],[b,i,c]])if(t.every(j=>Number.isFinite(p.z[j])))indices.push(...t);}}
+ const vb=gl.createBuffer();gl.bindBuffer(gl.ARRAY_BUFFER,vb);gl.bufferData(gl.ARRAY_BUFFER,new Float32Array(vertices),gl.STATIC_DRAW);
+ for(const [name,n,offset] of [['pos',3,0],['tex',2,12]]){let loc=gl.getAttribLocation(prog,name);gl.enableVertexAttribArray(loc);gl.vertexAttribPointer(loc,n,gl.FLOAT,false,20,offset);}
+ gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER,gl.createBuffer());gl.bufferData(gl.ELEMENT_ARRAY_BUFFER,new Uint16Array(indices),gl.STATIC_DRAW);
+ gl.bindTexture(gl.TEXTURE_2D,gl.createTexture());for(const [k,v] of [[gl.TEXTURE_WRAP_S,gl.CLAMP_TO_EDGE],[gl.TEXTURE_WRAP_T,gl.CLAMP_TO_EDGE],[gl.TEXTURE_MIN_FILTER,gl.LINEAR],[gl.TEXTURE_MAG_FILTER,gl.LINEAR]])gl.texParameteri(gl.TEXTURE_2D,k,v);
+ let yaw,pitch,zoom,ready=false;function reset(){yaw=-.56;pitch=.69;zoom=1.6;draw();}
+ function draw(){if(!ready)return;const d=Math.min(devicePixelRatio,2);canvas.width=Math.max(1,Math.round(canvas.clientWidth*d));canvas.height=Math.max(1,Math.round(canvas.clientHeight*d));gl.viewport(0,0,canvas.width,canvas.height);gl.enable(gl.DEPTH_TEST);gl.clearColor(.13,.13,.13,1);gl.clear(gl.COLOR_BUFFER_BIT|gl.DEPTH_BUFFER_BIT);gl.uniform4f(gl.getUniformLocation(prog,'view'),yaw,pitch,canvas.width/canvas.height,1);gl.uniform1f(gl.getUniformLocation(prog,'zoom'),zoom);gl.uniform1f(gl.getUniformLocation(prog,'opacity'),+document.querySelector('#opacity').value);gl.drawElements(gl.TRIANGLES,indices.length,gl.UNSIGNED_SHORT,0);}
+ const img=new Image();img.onload=()=>{gl.texImage2D(gl.TEXTURE_2D,0,gl.RGBA,gl.RGBA,gl.UNSIGNED_BYTE,img);ready=true;reset();canvas.dataset.ready='true';};img.onerror=()=>{info.textContent='Texture could not be decoded.';};img.src='data:image/png;base64,'+p.texture;
+ function move(dx,dy,factor=1){yaw+=dx;pitch=Math.max(.08,Math.min(1.55,pitch+dy));zoom=Math.min(8,Math.max(.4,zoom*factor));draw();}
+ let last;canvas.onpointerdown=e=>{canvas.setPointerCapture(e.pointerId);last=[e.clientX,e.clientY];};canvas.onpointerup=canvas.onpointercancel=()=>last=null;canvas.onpointermove=e=>{if(last){move((e.clientX-last[0])*.009,(e.clientY-last[1])*.007);last=[e.clientX,e.clientY];}};canvas.onwheel=e=>{e.preventDefault();move(0,0,Math.exp(-e.deltaY*.001));};canvas.onkeydown=e=>{const args={ArrowLeft:[-.1,0],ArrowRight:[.1,0],ArrowUp:[0,.1],ArrowDown:[0,-.1],'+':[0,0,1.1],'-':[0,0,.9]}[e.key];if(args){e.preventDefault();move(...args);}};document.querySelector('#reset').onclick=reset;document.querySelector('#opacity').oninput=draw;new ResizeObserver(draw).observe(canvas);
+}
+try{start();}catch(e){info.textContent=e.message;}
+</script></html>

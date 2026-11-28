@@ -23,6 +23,9 @@ from .contact_ui import ContactToolsMixin
 from . import sections, models, elevation_contacts, elevation_import, local_xyz
 from .qgis_import import ImportFromQGISDialog, file_backed_map, import_wells
 from . import grouped_import
+from .connect.plugin import Connect
+from .connect.appearance import stylesheet
+from qgis.PyQt.QtWidgets import QApplication
 
 
 class GroundSurfGeothermalPlugin:
@@ -30,6 +33,7 @@ class GroundSurfGeothermalPlugin:
         self.iface = iface
         self.action = None
         self.dock = None
+        self.connect = None
 
     def initGui(self):
         self.action = QAction(
@@ -43,13 +47,21 @@ class GroundSurfGeothermalPlugin:
     def open_dock(self):
         if self.dock is None:
             self.dock = GeothermalDock(self.iface, self.iface.mainWindow())
+            self.connect = Connect(self.iface)
+            self.connect.embedded = True
+            self.dock.mount_discovery(self.connect)
             self.iface.addDockWidget(Qt.DockWidgetArea.RightDockWidgetArea, self.dock)
         self.dock.show()
         self.dock.raise_()
 
     def unload(self):
+        if self.connect is not None:
+            self.connect.unload()
+            self.connect = None
         if self.dock is not None:
             self.dock.close_studio()
+            if hasattr(self.dock, "workspace_tabs"):
+                QApplication.instance().paletteChanged.disconnect(self.dock._set_theme)
             if getattr(self.dock, "_section_window", None):
                 self.dock._section_window.close()
             for layer_id in getattr(self.dock, "_preview_line_ids", {}).values():
@@ -181,7 +193,7 @@ class GeothermalDock(ContactToolsMixin, ModelToolsMixin,
             ("Add well", self.add_well),
             ("Add map layer", self.add_map),
             ("Relink map", self.relink_map),
-            ("Switch theme", self.toggle_theme),
+            ("Detach modelling workspace", self.open_studio),
             ("Help & feedback", self.open_help),
             ("Open desktop Studio", self.launch_desktop_studio),
         )):
@@ -295,61 +307,43 @@ class GeothermalDock(ContactToolsMixin, ModelToolsMixin,
         outer.addWidget(self.status)
         self.refresh()
 
-    def _set_theme(self):
-        if self.theme == "dark":
-            self.widget().setStyleSheet("""
-                QWidget { background:#212121; color:#e6e9e7; }
-                QLabel#gsHeading { color:#8db99a; font-size:16px; font-weight:700; }
-                QLabel#gsDescription, QLabel#gsStatus { color:#a1aca7; }
-                QPushButton { background:#303b34; border:1px solid #536957;
-                              padding:8px; border-radius:3px; }
-                QPushButton:hover { background:#405847; }
-                QPushButton#gsModelsShortcut {
-                    background:#234f35; border:1px solid #72a888;
-                    color:#effaf0; font-weight:700; padding:7px;
-                }
-                QPushButton#gsModelsShortcut:hover { background:#326c49; }
-                QPushButton#gsMoreTools {
-                    background:#252b27; border:1px solid #3c5143;
-                    color:#afc8b8; padding:4px;
-                }
-                QSplitter::handle { background:#374c3e; }
-                QTreeWidget, QTableWidget, QTextEdit {
-                    background:#252c28; alternate-background-color:#303732;
-                    selection-background-color:#395e45; border:1px solid #4b574f;
-                }
-                QTabWidget::pane { border:1px solid #4b574f; }
-                QTabBar::tab { background:#303732; padding:7px; }
-                QTabBar::tab:selected { background:#395e45; }
-            """)
+    def mount_discovery(self, connect):
+        self.model_content = self.widget()
+        self.model_content.setParent(None)
+        outer = QWidget(self)
+        layout = QVBoxLayout(outer)
+        layout.setContentsMargins(0, 0, 0, 0)
+        self.workspace_tabs = QTabWidget(outer)
+        layout.addWidget(self.workspace_tabs)
+        self.setWidget(outer)
+        if connect.register():
+            discovery = connect.embed(self, lambda: self.workspace_tabs.setCurrentIndex(0))
         else:
-            self.widget().setStyleSheet("""
-                QWidget { background:#f7f9f7; color:#222b26; }
-                QLabel#gsHeading { color:#225b39; font-size:16px; font-weight:700; }
-                QLabel#gsDescription, QLabel#gsStatus { color:#56695e; }
-                QPushButton { background:#e8f1eb; border:1px solid #afc6b5;
-                              padding:8px; border-radius:3px; }
-                QPushButton:hover { background:#d2e7d8; }
-                QPushButton#gsModelsShortcut {
-                    background:#d3e9da; border:1px solid #398158;
-                    color:#1b4e30; font-weight:700; padding:7px;
-                }
-                QPushButton#gsModelsShortcut:hover { background:#bfe0cb; }
-                QPushButton#gsMoreTools {
-                    background:#f1f6f2; border:1px solid #c1d3c6;
-                    color:#416650; padding:4px;
-                }
-                QSplitter::handle { background:#d1ded4; }
-                QTreeWidget, QTableWidget, QTextEdit {
-                    background:#fff; selection-background-color:#b3dbc1;
-                    border:1px solid #bccbc0;
-                }
-                QTabBar::tab { background:#e8f1eb; padding:7px; }
-                QTabBar::tab:selected { background:#c2dfca; }
-            """)
+            discovery = QWidget()
+            controls = QVBoxLayout(discovery)
+            message = QLabel("Disable the old GroundSurf Connect plugin in QGIS Plugin Manager, "
+                             "then reload Studio by GroundSurf in Plugin Manager. Modelling is still available.")
+            message.setWordWrap(True)
+            controls.addWidget(message)
+            controls.addStretch()
+        self.workspace_tabs.addTab(discovery, "Discover")
+        self.workspace_tabs.addTab(self.model_content, "Model & visualise")
+        self.workspace_tabs.setCurrentIndex(0)
+        self.models_shortcut.setText("3D models")
+        QApplication.instance().paletteChanged.connect(self._set_theme)
+        self._set_theme()
+
+    def _set_theme(self, *_):
+        # All workspaces use the same muted palette.
+        css = stylesheet(None if hasattr(self, "workspace_tabs") else self.theme == "dark")
+        css += """
+        QTabBar::tab { padding: 7px 12px; }
+        QLabel#gsHeading { font-weight: 600; }
+        QTreeWidget, QTableWidget { border: 1px solid palette(mid); }
+        """
+        self.widget().setStyleSheet(css)
         if self._studio_window is not None:
-            # The workspace is detached and no longer inherits dock CSS.
-            self._studio_window.setStyleSheet(self.widget().styleSheet())
+            self._studio_window.setStyleSheet(css)
 
     def _toggle_more_tools(self, shown):
         self.extra_actions.setVisible(bool(shown))
@@ -383,7 +377,7 @@ class GeothermalDock(ContactToolsMixin, ModelToolsMixin,
         if studio is None:
             return
         self._studio_window = None
-        self.explorer_splitter.setParent(self.widget())
+        self.explorer_splitter.setParent(getattr(self, "model_content", self.widget()))
         self.main_layout.insertWidget(
             self.workspace_home_index, self.explorer_splitter, 1
         )
@@ -397,11 +391,17 @@ class GeothermalDock(ContactToolsMixin, ModelToolsMixin,
     def open_models(self):
         """Direct shortcut to the 3D tab in independent Studio window."""
         self.tabs.setCurrentWidget(self.model_tab)
-        self.open_studio()
+        if hasattr(self, "workspace_tabs"):
+            self.workspace_tabs.setCurrentIndex(1)
+        else:
+            self.open_studio()
 
     def open_help(self):
         self.tabs.setCurrentIndex(self.help_tab_index)
-        self.open_studio()
+        if hasattr(self, "workspace_tabs"):
+            self.workspace_tabs.setCurrentIndex(1)
+        else:
+            self.open_studio()
 
     def launch_desktop_studio(self):
         """Launch an independent, opt-in Studio process, not another Qt window.
@@ -819,10 +819,11 @@ class GeothermalDock(ContactToolsMixin, ModelToolsMixin,
                     f"Linked QGIS map '{layer.name()}' without duplicating "
                     "or changing the original layer."
                 )
-            # After a successful QGIS import/link, show the result in a
-            # dedicated, larger window (already on the selected tab).
-            # No duplicate storage is created by this UI operation.
-            self.open_studio()
+            # Show the imported data in the existing modelling workspace.
+            if hasattr(self, "workspace_tabs"):
+                self.workspace_tabs.setCurrentIndex(1)
+            else:
+                self.open_studio()
         except Exception as exc:
             self._error("Import from QGIS failed", exc)
 
