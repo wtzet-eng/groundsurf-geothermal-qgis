@@ -30,6 +30,12 @@ class EvidenceDiscoveryTests(unittest.TestCase):
         self.assertTrue(any(r[0] == "Poland" for r in portals([19, 51, 19.1, 51.1], {"boreholes"})))
         self.assertEqual(portals([150, -34, 151, -33], {"boreholes"}), [])
 
+    def test_joined_action_words(self):
+        self.assertEqual(classify("Could you downloadboreholes for this area?"), {"boreholes"})
+        self.assertEqual(classify("findboreholes and getterrain"), {"boreholes", "terrain"})
+        self.assertEqual(classify("downloadgroundwater"), {"groundwater"})
+        self.assertEqual(classify("download"), set())
+
     @patch("groundsurf_geothermal.connect.evidence_discovery.request")
     def test_bgr_location_data_not_invented_logs(self, request):
         request.return_value = {

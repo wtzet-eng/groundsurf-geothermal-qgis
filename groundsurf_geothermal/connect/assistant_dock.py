@@ -488,7 +488,6 @@ class AssistantDock(QWidget):
             self.provider.setCurrentText("llama.cpp")
             self.ports["llama.cpp"] = port
             self.models["llama.cpp"] = name
-            self.share.setChecked(True)
             self.connection.setChecked(False)
             self.say("Existing local AI selected. Ask AI to propose a workflow.")
             self.controls()
@@ -497,6 +496,14 @@ class AssistantDock(QWidget):
 
     def ask_ai(self):
         if self.job or self.running or self.waiting:
+            return
+        roles = classify(self.prompt.text())
+        if roles - TERRAIN:
+            self.find_data()
+            self.say(
+                "Geological discovery uses verified source tools directly. "
+                "AI planning currently supports terrain and project inspection."
+            )
             return
         kind = self.provider.currentText()
         if kind == "Manual" or (
@@ -513,14 +520,6 @@ class AssistantDock(QWidget):
             self.connection.setChecked(True)
             self.other_ai.setChecked(True)
             self.say("Enter your own API key and model in connection settings.")
-            return
-        roles = classify(self.prompt.text())
-        if roles - TERRAIN:
-            self.find_data()
-            self.say(
-                "Geological discovery uses verified source tools directly. "
-                "AI planning currently supports terrain and project inspection."
-            )
             return
         self.plan()
 
@@ -664,6 +663,40 @@ class AssistantDock(QWidget):
         box.setDefaultButton(QMessageBox.No)
         return box.exec() == QMessageBox.Yes
 
+    def review_inference(self, kind, destination, prompt, content):
+        box = QMessageBox(self)
+        box.setWindowTitle("Ask AI to plan your workflow?")
+        box.setTextFormat(Qt.PlainText)
+        local = kind in self.ports
+        box.setText(
+            (
+                "Use your local AI service"
+                if local
+                else "Send a request to the selected online AI service"
+            )
+            + "?\n\n"
+            + prompt
+        )
+        context = (
+            "The selected map area and a short layer summary are included."
+            if self.share.isChecked()
+            else "No current project summary is included."
+        )
+        box.setInformativeText(
+            context
+            + "\nPrior reviewed requests may also be included. "
+            + (
+                "Destination: local computer (" + destination + ")."
+                if local
+                else "Destination: " + destination + ". Online usage may incur charges."
+            )
+            + "\nThe assistant will propose a plan. Nothing is executed until you approve it."
+        )
+        box.setDetailedText(content)
+        box.setStandardButtons(QMessageBox.Yes | QMessageBox.No)
+        box.setDefaultButton(QMessageBox.No)
+        return box.exec() == QMessageBox.Yes
+
     def submit_request(self):
         if self.job or self.running or self.waiting:
             return
@@ -673,15 +706,11 @@ class AssistantDock(QWidget):
             return
         if classify(text):
             self.find_data()
-        elif self.provider.currentText() == "Ollama" and (
-            not self.models["Ollama"] or not self.ollama_local.isChecked()
-        ):
-            self.connection.setChecked(True)
-            self.say("Set up free local AI, or describe the geographical data you want to find.")
-        elif self.provider.currentText() != "Manual":
-            self.plan()
         else:
-            self.say("Describe the data you need, or enable optional local AI for other workflows.")
+            self.say(
+                "Describe the data you need, for example: Find boreholes in this area. "
+                "For other workflows, choose Ask AI."
+            )
 
     def find_data(self):
         if self.job or self.running or self.waiting:
@@ -984,12 +1013,7 @@ class AssistantDock(QWidget):
             destination = (
                 f"127.0.0.1:{self.ports[kind]}" if kind in self.ports else "api.openai.com"
             )
-            if not self.ask(
-                "Review inference request",
-                f"{kind} · {destination}\n{self.hint.text()}\n\n"
-                "The following user content will be sent with the fixed workflow instructions and tool schema.\n"
-                + content,
-            ):
+            if not self.review_inference(kind, destination, prompt, content):
                 return
             self.say("You · " + prompt)
             model = self.models[kind]

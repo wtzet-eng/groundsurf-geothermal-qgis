@@ -52,6 +52,9 @@ def connect_local(a, plugin):
     # Simulate user approval only; discovery and inference are real.
     approval = patch.object(a, "ask", return_value=True)
     approval.start()
+    review = patch.object(a, "review_inference", return_value=True)
+    review.start()
+    a._qa_review = review
     a.existing_ai.click()
     wait_for(a, lambda: propose(a, plugin, approval))
 
@@ -72,6 +75,7 @@ def propose(a, plugin, approval):
 
 def verified(a, plugin, approval):
     approval.stop()
+    a._qa_review.stop()
     assert a.steps == ["define_area", "discover_data", "acquire_landscape",
                        "validate_transfer_package", "open_studio"], a.log.toPlainText()
     assert a.execute.isVisible() and not a.running and plugin.connect.task is None

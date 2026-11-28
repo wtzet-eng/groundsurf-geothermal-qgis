@@ -67,6 +67,13 @@ TERRAIN = {"terrain", "imagery"}
 
 def classify(text):
     text = text.casefold()
+    # Recover common missing spaces between an action and a data type.
+    text = re.sub(
+        r"\b(download|find|get|fetch|import|show|search|acquire|retrieve)"
+        r"(?=borehole|bore hole|terrain|imagery|aerial|groundwater|geolog|cpt|geophys)",
+        r"\1 ",
+        text,
+    )
     patterns = {
         "terrain": r"\b(terrain|elevation|topograph\w*|dtm|dem|dsm|landscape|gelände|nmt|rzeźb\w*)\b",
         "imagery": r"\b(imag\w*|aerial|satellite|orthophoto\w*|photo\w*|landscape|luftbild\w*|orto\w*)\b",
