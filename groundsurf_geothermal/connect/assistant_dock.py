@@ -30,6 +30,7 @@ from .account import Accounts, PERSONAL_BUILD
 from .context import snapshot
 from .inference import API, local_plan, message, request, responses_plan
 from .ollama_setup import installed_models, pull_recommended
+from .local_server import existing_servers
 from .package import validate
 from .evidence_discovery import (
     BGR_TERMS,
@@ -167,6 +168,9 @@ class AssistantDock(QWidget):
         self.mode_notice = QLabel("Manual workflow · no AI or account required.")
         self.mode_notice.setWordWrap(True)
         connection_layout.addWidget(self.mode_notice)
+        self.existing_ai = QPushButton("Use AI already running on this computer…")
+        self.existing_ai.clicked.connect(self.connect_existing_ai)
+        connection_layout.addWidget(self.existing_ai)
         self.quick_ai = QPushButton("Use free local AI")
         self.quick_ai.clicked.connect(self.quick_local_ai)
         connection_layout.addWidget(self.quick_ai)
@@ -211,9 +215,10 @@ class AssistantDock(QWidget):
         layout.addLayout(row)
         layout.addWidget(self.connection)
         layout.addWidget(self.connection_panel)
-        self.ai_plan = QPushButton("Ask AI to plan a workflow")
-        self.ai_plan.clicked.connect(lambda: self.plan())
-        connection_layout.addWidget(self.ai_plan)
+        self.ai_plan = QPushButton("Ask AI")
+        self.ai_plan.setToolTip("Ask the assistant to propose a reviewed scientific workflow.")
+        self.ai_plan.clicked.connect(self.ask_ai)
+        layout.insertWidget(0, self.ai_plan)
         connection_layout.addWidget(self.other_ai)
         connection_layout.addWidget(self.provider_panel)
         self.models = {"OpenAI API": "", "Ollama": "", "llama.cpp": "", "ChatGPT": ""}
@@ -254,13 +259,34 @@ class AssistantDock(QWidget):
         busy = self.running or self.job is not None or self.waiting is not None
         for w in (self.provider, self.configure, self.account_row, self.prompt, self.share):
             w.setEnabled(not busy)
-        ready = self.provider.currentText() != "Ollama" or (
+        kind = self.provider.currentText()
+        ready = (
             bool(self.models["Ollama"]) and self.ollama_local.isChecked()
+            if kind == "Ollama"
+            else (
+                bool(self.models["llama.cpp"])
+                if kind == "llama.cpp"
+                else (
+                    bool(self.models["OpenAI API"] and self.api_key)
+                    if kind == "OpenAI API"
+                    else (
+                        bool(PERSONAL_BUILD and self.account.currentData())
+                        if kind == "ChatGPT"
+                        else False
+                    )
+                )
+            )
         )
         self.plan_button.setEnabled(not busy and self.landscape_ready)
         self.plan_button.setVisible(self.landscape_ready and not busy and not self.steps)
-        self.ai_plan.setEnabled(not busy and ready and self.provider.currentText() != "Manual")
-        self.ai_plan.setVisible(self.provider.currentText() != "Manual")
+        self.ai_plan.setEnabled(not busy)
+        self.ai_plan.setVisible(True)
+        self.existing_ai.setEnabled(not busy)
+        self.ai_plan.setText(
+            "Ask AI"
+            if self.provider.currentText() != "Manual" and ready
+            else "Ask AI · optional setup"
+        )
         self.connection.setText(
             "AI · "
             + (
@@ -272,7 +298,11 @@ class AssistantDock(QWidget):
                     else (
                         "setup needed"
                         if self.provider.currentText() == "Ollama"
-                        else self.provider.currentText()
+                        else (
+                            ("local model ready" if ready else "setup needed")
+                            if self.provider.currentText() == "llama.cpp"
+                            else self.provider.currentText()
+                        )
                     )
                 )
             )
@@ -333,6 +363,7 @@ class AssistantDock(QWidget):
         self.share.setChecked(False)
         self.share.setVisible(kind != "Manual")
         self.quick_ai.setVisible(kind == "Manual")
+        self.existing_ai.setVisible(kind in ("Manual", "Ollama", "llama.cpp"))
         self.manual_return.setVisible(kind != "Manual")
         self.prompt.setVisible(True)
         self.connection.setText("AI settings · " + ("Off (optional)" if kind == "Manual" else kind))
@@ -423,6 +454,75 @@ class AssistantDock(QWidget):
                 self.say(detail)
 
             self.start_job("Disconnect ChatGPT", lambda _: self.accounts.sign_out(cid), ended)
+
+    def connect_existing_ai(self):
+        if self.job or self.running or self.waiting:
+            return
+        self.say("Checking for an already running local AI. No prompts are sent.")
+
+        def found(servers):
+            if not servers:
+                self.say(
+                    "No existing llama.cpp service found. Set up free local AI or continue without it."
+                )
+                return
+            # Prefer the first detected endpoint for duplicate model names.
+            choices = {}
+            for port, name in servers:
+                choices.setdefault(name, port)
+            labels = list(choices)
+            choice = labels[0]
+            if len(labels) > 1:
+                choice, ok = QInputDialog.getItem(
+                    self, "Use existing local AI", "Choose a trusted local model", labels, 0, False
+                )
+                if not ok:
+                    return
+            name, port = choice, choices[choice]
+            if not self.ask(
+                "Trust this local AI?",
+                f"Use {name} at 127.0.0.1:{port} only if you know it runs locally without forwarding "
+                "requests to the cloud. Each scientific request still requires review.",
+            ):
+                return
+            self.provider.setCurrentText("llama.cpp")
+            self.ports["llama.cpp"] = port
+            self.models["llama.cpp"] = name
+            self.share.setChecked(True)
+            self.connection.setChecked(False)
+            self.say("Existing local AI selected. Ask AI to propose a workflow.")
+            self.controls()
+
+        self.start_job("Detect existing local AI", existing_servers, found)
+
+    def ask_ai(self):
+        if self.job or self.running or self.waiting:
+            return
+        kind = self.provider.currentText()
+        if kind == "Manual" or (
+            kind == "Ollama" and (not self.models["Ollama"] or not self.ollama_local.isChecked())
+        ):
+            self.connection.setChecked(True)
+            self.say("Set up free local AI, or connect an existing local AI service.")
+            return
+        if kind == "llama.cpp" and not self.models[kind]:
+            self.connection.setChecked(True)
+            self.say("Choose an existing local AI service or enter its connection settings.")
+            return
+        if kind == "OpenAI API" and not (self.models[kind] and self.api_key):
+            self.connection.setChecked(True)
+            self.other_ai.setChecked(True)
+            self.say("Enter your own API key and model in connection settings.")
+            return
+        roles = classify(self.prompt.text())
+        if roles - TERRAIN:
+            self.find_data()
+            self.say(
+                "Geological discovery uses verified source tools directly. "
+                "AI planning currently supports terrain and project inspection."
+            )
+            return
+        self.plan()
 
     def disable_ai(self):
         self.provider.setCurrentText("Manual")

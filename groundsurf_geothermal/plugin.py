@@ -1,4 +1,4 @@
-"""GroundSurf Studio Connector 0.5.0: QGIS geological modelling workspace."""
+"""GroundSurf Studio Connector 0.5.1: QGIS geological modelling workspace."""
 import os
 from shutil import which
 from pathlib import Path
@@ -251,7 +251,7 @@ class GeothermalDock(ContactToolsMixin, ModelToolsMixin,
         self.info = QTextEdit()
         self.info.setReadOnly(True)
         self.info.setPlainText(
-            "GroundSurf Studio Connector 0.5.0\n\n"
+            "GroundSurf Studio Connector 0.5.1\n\n"
             "Local GeoPackage projects and WGS84 well locations.\n"
             "Depths: metres, positive downward.\n"
             "Elevations: metres, datum supplied by user.\n\n"
