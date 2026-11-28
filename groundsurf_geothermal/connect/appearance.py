@@ -1,21 +1,37 @@
 """Calm, accessible greys following the current Qt application palette."""
 
 from qgis.PyQt.QtGui import QColor, QPalette
-from qgis.PyQt.QtWidgets import QApplication, QPlainTextEdit
+from qgis.PyQt.QtCore import Qt, QSize
+from qgis.PyQt.QtWidgets import QApplication, QPlainTextEdit, QScrollArea, QFrame
 
 
 class RequestEdit(QPlainTextEdit):
     def __init__(self):
         super().__init__()
         self.setObjectName("GroundSurfRequest")
-        self.setMinimumHeight(220)
+        self.setMinimumHeight(105)
+        self.setMaximumHeight(240)
         self.setPlaceholderText(
             "Describe what you need in your own words…\n\n"
             "For example: Find boreholes, terrain and aerial imagery in this area."
         )
 
+    def sizeHint(self):
+        return QSize(320, 180)
+
     def text(self):
         return self.toPlainText()
+
+
+def scroll_page(widget):
+    """Keep page minimum sizes from expanding the surrounding QGIS dock."""
+    scroll = QScrollArea()
+    scroll.setFrameShape(QFrame.NoFrame)
+    scroll.setWidgetResizable(True)
+    scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarAsNeeded)
+    scroll.setVerticalScrollBarPolicy(Qt.ScrollBarAsNeeded)
+    scroll.setWidget(widget)
+    return scroll
 
 
 def colours(dark):

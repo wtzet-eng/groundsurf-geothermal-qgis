@@ -26,6 +26,7 @@ from qgis.PyQt.QtWidgets import (
     QDoubleSpinBox,
     QFileDialog,
     QFormLayout,
+    QHBoxLayout,
     QApplication,
     QLabel,
     QTabWidget,
@@ -36,7 +37,7 @@ from qgis.PyQt.QtWidgets import (
     QWidget,
 )
 
-from .appearance import RequestEdit, stylesheet, text_palette
+from .appearance import RequestEdit, scroll_page, stylesheet, text_palette
 from .catalogue import acquisition_adapter, discover, source_groups
 from .package import create_package, validate, write_view
 from .provider import Provider, box, mask_file
@@ -160,7 +161,8 @@ class Connect:
         self.theme_widget = widget
         QApplication.instance().paletteChanged.connect(self.update_appearance)
         lay = QVBoxLayout(widget)
-        lay.setSpacing(7)
+        lay.setSpacing(6)
+        lay.setContentsMargins(8, 6, 8, 6)
         title = QLabel("What would you like to investigate?")
         title.setWordWrap(True)
         lay.addWidget(title)
@@ -205,18 +207,21 @@ class Connect:
         self.advanced_panel.hide()
         self.advanced.toggled.connect(self.advanced_panel.setVisible)
         self.request = RequestEdit()
-        lay.addWidget(self.request, 2)
+        lay.addWidget(self.request, 1)
         self.find_button = QPushButton("Find data")
         self.find_button.setObjectName("GroundSurfPrimary")
-        lay.addWidget(self.find_button)
+        actions = QHBoxLayout()
+        actions.addWidget(self.find_button, 1)
+        lay.addLayout(actions)
         self.source = QComboBox()
         self.source.addItem("Automatic (recommended)", "auto")
         advanced_form.addRow("Source", self.source)
         self.tabs = QTabWidget()
-        lay.addWidget(self.tabs, 2)
+
         manual = QWidget()
         manual.setObjectName("GroundSurfManual")
         manual_lay = QVBoxLayout(manual)
+        manual_lay.setContentsMargins(2, 4, 2, 4)
 
         def button(label, fn):
             btn = QPushButton(label)
@@ -237,36 +242,53 @@ class Connect:
         button("Send existing terrain to Studio…", self.studio)
         button("Change Studio application…", self.choose_studio)
         button("Check my setup", self.check_setup)
-        if not self.embedded:
-            self.dock.setWidget(widget)
         from .assistant_dock import AssistantDock
 
         self.assistant_dock = AssistantDock(self)
-        self.tabs.addTab(self.assistant_dock, "Workflow")
-        self.tabs.addTab(manual, "Advanced tools")
+        self.assistant_scroll = scroll_page(self.assistant_dock)
+        self.manual_scroll = scroll_page(manual)
+        self.tabs.addTab(self.assistant_scroll, "Workflow")
+        self.tabs.addTab(self.manual_scroll, "Advanced tools")
         self.tabs.tabBar().hide()
+        actions.addWidget(self.assistant_dock.ai_plan, 1)
         self.tools_toggle = QPushButton("More tools")
         self.tools_toggle.setCheckable(True)
-        lay.addWidget(self.tools_toggle)
-        self.tools_toggle.toggled.connect(self.advanced.setVisible)
-        self.tools_toggle.toggled.connect(
-            lambda checked: self.advanced_panel.setVisible(checked and self.advanced.isChecked())
-        )
-        lay.addWidget(self.advanced)
-        lay.addWidget(self.advanced_panel)
-        self.advanced.hide()
         self.import_local = QPushButton("Add my own data…")
         self.import_local.clicked.connect(self.add_local_files)
-        lay.insertWidget(lay.indexOf(self.tools_toggle), self.import_local)
+        secondary = QHBoxLayout()
+        secondary.addWidget(self.import_local, 1)
+        secondary.addWidget(self.tools_toggle, 1)
+        lay.addLayout(secondary)
+        lay.addWidget(self.tabs, 3)
+        manual_lay.insertWidget(0, self.advanced)
+        manual_lay.insertWidget(1, self.advanced_panel)
+        self.advanced.hide()
+        self.assistant_dock.connection.toggled.connect(self.reveal_ai_settings)
         self.tools_toggle.toggled.connect(lambda checked: self.tabs.setCurrentIndex(int(checked)))
         self.tabs.currentChanged.connect(self.sync_tools)
         self.find_button.clicked.connect(self.find_data)
 
+        self.page_scroll = scroll_page(widget)
         if not self.embedded:
+            self.dock.setWidget(self.page_scroll)
             self.iface.addDockWidget(Qt.RightDockWidgetArea, self.dock)
         self.set_workflow_busy(False)
         self.update_appearance()
-        return widget
+        return self.page_scroll
+
+    def reveal_ai_settings(self, opened):
+        if opened:
+            self.tabs.setCurrentIndex(0)
+            from qgis.PyQt.QtCore import QTimer
+
+            QTimer.singleShot(
+                0,
+                lambda: (
+                    self.assistant_scroll.ensureWidgetVisible(self.assistant_dock.connection, 0, 8)
+                    if self.assistant_dock.connection.isChecked()
+                    else None
+                ),
+            )
 
     def update_appearance(self, *_):
         if self.dock:

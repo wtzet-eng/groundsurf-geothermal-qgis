@@ -1,4 +1,4 @@
-"""GroundSurf Studio Connector 0.5.2: QGIS geological modelling workspace."""
+"""GroundSurf Studio Connector 0.5.3: QGIS geological modelling workspace."""
 import os
 from shutil import which
 from pathlib import Path
@@ -24,7 +24,7 @@ from . import sections, models, elevation_contacts, elevation_import, local_xyz
 from .qgis_import import ImportFromQGISDialog, file_backed_map, import_wells
 from . import grouped_import
 from .connect.plugin import Connect
-from .connect.appearance import stylesheet
+from .connect.appearance import stylesheet, scroll_page
 from qgis.PyQt.QtWidgets import QApplication
 
 
@@ -251,7 +251,7 @@ class GeothermalDock(ContactToolsMixin, ModelToolsMixin,
         self.info = QTextEdit()
         self.info.setReadOnly(True)
         self.info.setPlainText(
-            "GroundSurf Studio Connector 0.5.2\n\n"
+            "GroundSurf Studio Connector 0.5.3\n\n"
             "Local GeoPackage projects and WGS84 well locations.\n"
             "Depths: metres, positive downward.\n"
             "Elevations: metres, datum supplied by user.\n\n"
@@ -327,7 +327,8 @@ class GeothermalDock(ContactToolsMixin, ModelToolsMixin,
             controls.addWidget(message)
             controls.addStretch()
         self.workspace_tabs.addTab(discovery, "Discover")
-        self.workspace_tabs.addTab(self.model_content, "Model & visualise")
+        self.model_scroll = scroll_page(self.model_content)
+        self.workspace_tabs.addTab(self.model_scroll, "Model & visualise")
         self.workspace_tabs.setCurrentIndex(0)
         self.models_shortcut.setText("3D models")
         QApplication.instance().paletteChanged.connect(self._set_theme)

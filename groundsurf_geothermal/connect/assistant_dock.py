@@ -182,6 +182,7 @@ class AssistantDock(QWidget):
         provider_layout.addWidget(area)
         self.log = QTextEdit()
         self.log.setReadOnly(True)
+        self.log.setMinimumHeight(100)
         self.log.setPlaceholderText("Available data and results will appear here.")
         layout.addWidget(self.log, 1)
         self.prompt = connect.request
@@ -218,7 +219,7 @@ class AssistantDock(QWidget):
         self.ai_plan = QPushButton("Ask AI")
         self.ai_plan.setToolTip("Ask the assistant to propose a reviewed scientific workflow.")
         self.ai_plan.clicked.connect(self.ask_ai)
-        layout.insertWidget(0, self.ai_plan)
+
         connection_layout.addWidget(self.other_ai)
         connection_layout.addWidget(self.provider_panel)
         self.models = {"OpenAI API": "", "Ollama": "", "llama.cpp": "", "ChatGPT": ""}
@@ -497,6 +498,7 @@ class AssistantDock(QWidget):
     def ask_ai(self):
         if self.job or self.running or self.waiting:
             return
+        self.connect.tabs.setCurrentIndex(0)
         roles = classify(self.prompt.text())
         if roles - TERRAIN:
             self.find_data()

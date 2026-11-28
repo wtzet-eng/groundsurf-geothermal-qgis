@@ -44,7 +44,7 @@ def verify(plugin):
         assert len([d for d in utils.iface.mainWindow().findChildren(QDockWidget)
                     if d.objectName() in ("GroundSurfGeothermalDock", "GroundSurfConnectDock")]) == 1
         assert dock.workspace_tabs.currentIndex() == 0
-        assert connect.request.isVisible() and connect.request.height() >= 220
+        assert connect.request.isVisible() and 105 <= connect.request.height() <= 240
         assert QgsApplication.processingRegistry().algorithmById("groundsurf:discover_data")
         assert dock.windowTitle().startswith("GroundSurf Studio Connector")
         palette = QApplication.palette()
