@@ -1176,7 +1176,7 @@ class AssistantDock(QWidget):
                             "Studio was not opened. Check the Connect dock or select a trusted application."
                         )
                     detail = (
-                        "Studio opened. Choose Import transfer folder and select " + self.folder
+                        "Transfer handed to Studio. The scene appears after Studio validates the evidence."
                     )
             else:
                 detail = self.processing_step(step)

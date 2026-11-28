@@ -1,4 +1,5 @@
 import json
+import subprocess
 import tempfile
 from pathlib import Path
 from shutil import which
@@ -37,11 +38,38 @@ from qgis.PyQt.QtWidgets import (
     QWidget,
 )
 
+from . import handoff
 from .appearance import RequestEdit, scroll_page, stylesheet, text_palette
 from .catalogue import acquisition_adapter, discover, source_groups
 from .package import create_package, validate, write_view
 from .provider import Provider, box, mask_file
 from .raster import grid
+
+
+class BrowserDownload(QgsTask):
+    def __init__(self, callback):
+        super().__init__("Retrieve compatible browser Studio", QgsTask.CanCancel)
+        self.callback = callback
+        self.html = None
+
+    def run(self):
+        import hashlib
+        from urllib.request import build_opener
+        from .catalogue import NoRedirect
+        try:
+            url = "https://studio.groundsurf.net/connector/060/" + handoff.RECEIVER
+            with build_opener(NoRedirect()).open(url, timeout=10) as reply:
+                data = reply.read(4*1024**2 + 1)
+            if self.isCanceled() or hashlib.sha256(data).hexdigest() != handoff.DIGEST:
+                return False
+            self.html = data
+            return True
+        except OSError:
+            return False
+
+    def finished(self, ok):
+        if self.callback:
+            self.callback(self, self.html if ok else None)
 
 
 class LandscapeTask(QgsTask):
@@ -97,6 +125,7 @@ class Connect:
         self.provider = Provider()
         self.package = None
         self.preview_tmp = tempfile.TemporaryDirectory()
+        self.browser_jobs = []
         self.embedded = False
         self.select_discovery = None
         self.registered = False
@@ -119,6 +148,10 @@ class Connect:
         self.iface.addPluginToMenu("GroundSurf Connect", self.assistant_action)
 
     def unload(self):
+        for job in self.browser_jobs:
+            job.callback = None
+            job.cancel()
+        self.browser_jobs.clear()
         if not self.embedded and hasattr(self, "assistant_action"):
             self.iface.removePluginMenu("GroundSurf Connect", self.assistant_action)
             self.iface.removePluginMenu("GroundSurf Connect", self.action)
@@ -240,7 +273,17 @@ class Connect:
         )
         button("Preview terrain…", self.preview)
         button("Send existing terrain to Studio…", self.studio)
+        self.studio_mode = QComboBox()
+        self.studio_mode.addItems(["Automatic (recommended)", "Always use browser Studio", "Always use desktop Studio"])
+        mode = QgsSettings().value("GroundSurfConnect/studioMode", 0, type=int)
+        self.studio_mode.setCurrentIndex(mode if mode in (0,1,2) else 0)
+        self.studio_mode.currentIndexChanged.connect(lambda i: QgsSettings().setValue("GroundSurfConnect/studioMode", i))
+        manual_lay.addWidget(QLabel("Studio preference"))
+        manual_lay.addWidget(self.studio_mode)
         button("Change Studio application…", self.choose_studio)
+        import platform
+        os_label = {"Linux":"Linux", "Windows":"Windows", "Darwin":"macOS"}.get(platform.system(),"desktop")
+        button("Desktop downloads · " + os_label, self.desktop_download)
         button("Check my setup", self.check_setup)
         from .assistant_dock import AssistantDock
 
@@ -512,12 +555,7 @@ class Connect:
                 != QMessageBox.Yes
             ):
                 return
-            if assistant_review:
-                destination = str(self.new_transfer_folder("Landscape") / "landscape")
-            else:
-                destination = QFileDialog.getSaveFileName(
-                    self.dock, "Name a new transfer directory"
-                )[0]
+            destination = str(self.new_transfer_folder("Landscape") / "landscape")
             if not destination:
                 return
             if Path(destination).exists():
@@ -605,8 +643,7 @@ class Connect:
             )
         app = QgsSettings().value("GroundSurfConnect/studio", "", type=str)
         lines.append(
-            "Browser Studio · "
-            + ("chosen" if app and Path(app).is_file() else "choose once when sending evidence")
+            "Preferred portable Studio · " + (app or "automatic discovery")
         )
         lines.append(
             "AI is optional. Open AI setup to check model readiness. No software was installed."
@@ -615,63 +652,74 @@ class Connect:
 
     def open_studio_folder(self, folder, boreholes=False, profile_evidence=False):
         settings = QgsSettings()
-        app = settings.value("GroundSurfConnect/studio", "", type=str)
-        # Reuse only an explicitly chosen file whose bytes have not changed.
-        import hashlib
-
-        def digest(path):
-            file = Path(path)
-            if (
-                not file.is_file()
-                or file.suffix.lower() != ".html"
-                or file.stat().st_size > 32 * 1024 * 1024
-            ):
-                return ""
-            return hashlib.sha256(file.read_bytes()).hexdigest()
-
-        if (
-            not app
-            or not digest(app)
-            or digest(app) != settings.value("GroundSurfConnect/studioHash", "")
-            or (
-                profile_evidence
-                and digest(app) != settings.value("GroundSurfConnect/studioProfileHash", "")
-            )
-        ):
-            app = QFileDialog.getOpenFileName(
-                self.dock,
-                (
-                    "Choose Studio Preview 4 or later for regional profiles"
-                    if profile_evidence
-                    else "Choose GroundSurf Studio once (offline HTML)"
-                ),
-                self.studio_suggestion() if profile_evidence else (app or self.studio_suggestion()),
-                "Studio application (*.html)",
-            )[0]
-        if not app:
+        mode = settings.value("GroundSurfConnect/studioMode", 0, type=int)
+        exe = handoff.desktop() if mode != 1 else None
+        if mode == 2 and not exe and QMessageBox.question(
+            self.dock, "Desktop Studio unavailable", "Open this evidence in browser Studio instead?",
+            QMessageBox.Yes | QMessageBox.No, QMessageBox.No) != QMessageBox.Yes:
             return False
-        if Path(app).resolve().is_relative_to(Path(folder).resolve()):
-            raise ValueError("Choose the separate Studio application outside the transfer package.")
-        checksum = digest(app)
-        if not checksum:
-            raise ValueError("Choose a valid local Studio HTML application.")
-        settings.setValue("GroundSurfConnect/studio", app)
-        settings.setValue("GroundSurfConnect/studioHash", checksum)
-        if profile_evidence:
-            settings.setValue("GroundSurfConnect/studioProfileHash", checksum)
-        url = QUrl.fromLocalFile(app)
-        url.setFragment("connect")
-        if not QDesktopServices.openUrl(url):
-            raise ValueError("The browser could not open Studio.")
-        if boreholes:
-            self.assistant_dock.say(
-                "In updated Studio, choose Import transfer folder and select " + folder
-            )
+        payload = handoff.prepare(folder, boreholes)
+        if exe:
+            path = handoff.launch_file(self.preview_tmp.name, payload)
+            subprocess.Popen([str(exe), "--groundsurf-transfer", str(path)])
+            message = "Opening evidence in a new desktop Studio session."
         else:
-            self.report.setPlainText(
-                "In Studio, choose Import transfer folder and select " + folder
-            )
+            downloads = Path(QStandardPaths.writableLocation(QStandardPaths.DownloadLocation))
+            candidates = [settings.value("GroundSurfConnect/studio", "", type=str),
+                          downloads/handoff.RECEIVER, downloads/"GroundSurf-Connector-0.6"/handoff.RECEIVER,
+                          Path.home()/".groundsurf"/"browser"/handoff.RECEIVER]
+            html = handoff.portable(candidates)
+            if html is None:
+                def received(job, html):
+                    self.browser_jobs.remove(job)
+                    if job.isCanceled():
+                        return
+                    if html is None:
+                        msg = ("The public browser trial does not supply this compatible receiver. "
+                               "Extract the separate 0.6 preview kit in Downloads. Your original transfer is at " + str(folder))
+                        self.assistant_dock.say(msg)
+                        self.report.setPlainText(msg)
+                        return
+                    self.launch_browser(payload, html)
+                job = BrowserDownload(received)
+                self.browser_jobs.append(job)
+                QgsApplication.taskManager().addTask(job)
+                self.assistant_dock.say("Retrieving browser Studio from studio.groundsurf.net. Evidence stays local.")
+                return True
+            return self.launch_browser(payload, html)
+        self.report.setPlainText(message)
+        self.assistant_dock.say(message)
         return True
+
+    def desktop_download(self):
+        import platform
+        from urllib.request import build_opener
+        from .catalogue import NoRedirect
+        def lookup(task):
+            with build_opener(NoRedirect()).open("https://studio.groundsurf.net/", timeout=8) as reply:
+                return handoff.installer_link(reply.read(512000).decode("utf-8"), platform.system(), platform.machine())
+        def finished(error, link=None):
+            if link:
+                QDesktopServices.openUrl(QUrl(link))
+            else:
+                QMessageBox.information(None, "Desktop Studio", "A verified installer for this system is unavailable. Continue in browser Studio.")
+        QgsApplication.taskManager().addTask(QgsTask.fromFunction("Find official Studio installer", lookup, on_finished=finished))
+
+    def launch_browser(self, payload, html):
+        try:
+            path = handoff.launch_file(self.preview_tmp.name, payload, html)
+            url = QUrl.fromLocalFile(str(path))
+            url.setFragment("connect")
+            if not QDesktopServices.openUrl(url):
+                raise ValueError("Browser launch failed. The prepared evidence is available for conventional import.")
+            msg = ("You're using the browser edition of GroundSurf Studio. Install the desktop edition "
+                   "for advanced local workflows and larger projects.")
+            self.report.setPlainText(msg)
+            self.assistant_dock.say(msg)
+            return True
+        except Exception as exc:
+            self.assistant_dock.say(str(exc))
+            return False
 
     def choose_studio(self):
         settings = QgsSettings()
