@@ -1,5 +1,5 @@
 [general]
-name=Studio by GroundSurf
+name=GroundSurf Studio Connector
 qgisMinimumVersion=3.34
 qgisMaximumVersion=3.99
 description=Discover geographical and geological evidence, model locally and transfer to GroundSurf Studio.

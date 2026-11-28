@@ -268,7 +268,7 @@ class Algorithm(QgsProcessingAlgorithm):
                 plugin = utils.plugins.get("groundsurf_connect")
             if plugin is None or utils.iface is None:
                 raise ValueError(
-                    "This interactive handoff requires the enabled GroundSurf Connect dock in QGIS Desktop."
+                    "This interactive handoff requires the enabled GroundSurf Studio Connector in QGIS Desktop."
                 )
             if plugin.task:
                 raise ValueError("A landscape transfer is already running.")
@@ -399,7 +399,7 @@ class Provider(QgsProcessingProvider):
         return "groundsurf"
 
     def name(self):
-        return "GroundSurf Connect"
+        return "GroundSurf Studio Connector"
 
     def loadAlgorithms(self):
         for key in HELP:

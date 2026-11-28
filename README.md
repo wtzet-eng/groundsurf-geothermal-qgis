@@ -1,6 +1,6 @@
-# Unified Studio by GroundSurf — 0.5.0 development preview
+# GroundSurf Studio Connector — 0.5.0 development preview
 
-One QGIS plugin (existing identifier groundsurf_geothermal), one dock. Discover embeds GroundSurf Connect 0.2.6; Model & visualise retains the established local geological modelling workspace. Existing standalone Studio remains separate. Both workspaces follow the current QGIS palette. Disable the separate GroundSurf Connect plugin before upgrading to avoid a Processing provider collision. The combined plugin is distributed under GPL-3.0-or-later, using the GPL-2.0-or-later option in the legacy code; its original licence notice remains included. This is a local development branch, not a public release. See docs/UNIFIED_STUDIO_050.md.
+One QGIS plugin (existing identifier groundsurf_geothermal), one dock. Discover embeds GroundSurf Connect 0.2.6; Model & visualise retains the established local geological modelling workspace. Existing standalone Studio remains separate. Both workspaces follow the current QGIS palette. Disable the separate GroundSurf Connect plugin before upgrading to avoid a Processing provider collision. The combined plugin is distributed under GPL-3.0-or-later, using the GPL-2.0-or-later option in the legacy code; its original licence notice remains included. This is a local development branch, not a public release. See docs/CONNECTOR_050.md. The older documentation describes the historical plugin versions.
 
 # Studio by GroundSurf 0.4.14 — Separate modelling Studio and reliable ParaView opening
 

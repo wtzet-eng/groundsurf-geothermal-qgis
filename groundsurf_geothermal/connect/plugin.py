@@ -1,6 +1,7 @@
 import json
 import tempfile
 from pathlib import Path
+from shutil import which
 
 import processing
 from qgis.core import (
@@ -235,6 +236,7 @@ class Connect:
         button("Preview terrain…", self.preview)
         button("Send existing terrain to Studio…", self.studio)
         button("Change Studio application…", self.choose_studio)
+        button("Check my setup", self.check_setup)
         if not self.embedded:
             self.dock.setWidget(widget)
         from .assistant_dock import AssistantDock
@@ -555,7 +557,41 @@ class Connect:
         root.mkdir(parents=True, exist_ok=True)
         return Path(tempfile.mkdtemp(prefix=kind + "-", dir=root))
 
-    def open_studio_folder(self, folder, boreholes=False):
+    def studio_suggestion(self):
+        downloads = QStandardPaths.writableLocation(QStandardPaths.DownloadLocation)
+        if not downloads:
+            return str(Path.home())
+        root = Path(downloads)
+        matches = []
+        for path in root.glob("GroundSurf-Studio-*-Preview-*/GroundSurf-Studio-Connect.html"):
+            try:
+                if path.is_file() and not path.is_symlink():
+                    matches.append((path.stat().st_mtime, str(path)))
+            except OSError:
+                continue
+        return max(matches)[1] if matches else downloads
+
+    def check_setup(self):
+        lines = ["QGIS · ready", "GDAL / Processing · available"]
+        for name, executable in (
+            ("ParaView", "paraview"),
+            ("Desktop Studio", "groundsurf-studio"),
+            ("Ollama", "ollama"),
+        ):
+            lines.append(
+                name + (" · executable found" if which(executable) else " · not found on PATH")
+            )
+        app = QgsSettings().value("GroundSurfConnect/studio", "", type=str)
+        lines.append(
+            "Browser Studio · "
+            + ("chosen" if app and Path(app).is_file() else "choose once when sending evidence")
+        )
+        lines.append(
+            "AI is optional. Open AI setup to check model readiness. No software was installed."
+        )
+        self.report.setPlainText("\n".join(lines))
+
+    def open_studio_folder(self, folder, boreholes=False, profile_evidence=False):
         settings = QgsSettings()
         app = settings.value("GroundSurfConnect/studio", "", type=str)
         # Reuse only an explicitly chosen file whose bytes have not changed.
@@ -575,11 +611,19 @@ class Connect:
             not app
             or not digest(app)
             or digest(app) != settings.value("GroundSurfConnect/studioHash", "")
+            or (
+                profile_evidence
+                and digest(app) != settings.value("GroundSurfConnect/studioProfileHash", "")
+            )
         ):
             app = QFileDialog.getOpenFileName(
                 self.dock,
-                "Choose GroundSurf Studio once (offline HTML)",
-                app,
+                (
+                    "Choose Studio Preview 4 or later for regional profiles"
+                    if profile_evidence
+                    else "Choose GroundSurf Studio once (offline HTML)"
+                ),
+                self.studio_suggestion() if profile_evidence else (app or self.studio_suggestion()),
                 "Studio application (*.html)",
             )[0]
         if not app:
@@ -591,6 +635,8 @@ class Connect:
             raise ValueError("Choose a valid local Studio HTML application.")
         settings.setValue("GroundSurfConnect/studio", app)
         settings.setValue("GroundSurfConnect/studioHash", checksum)
+        if profile_evidence:
+            settings.setValue("GroundSurfConnect/studioProfileHash", checksum)
         url = QUrl.fromLocalFile(app)
         url.setFragment("connect")
         if not QDesktopServices.openUrl(url):
@@ -610,13 +656,14 @@ class Connect:
         app = QFileDialog.getOpenFileName(
             self.dock,
             "Choose GroundSurf Studio (offline HTML)",
-            settings.value("GroundSurfConnect/studio", ""),
+            settings.value("GroundSurfConnect/studio", "") or self.studio_suggestion(),
             "Studio application (*.html)",
         )[0]
         if app:
             # Reconfirm the selected application on next launch.
             settings.setValue("GroundSurfConnect/studio", app)
             settings.remove("GroundSurfConnect/studioHash")
+            settings.remove("GroundSurfConnect/studioProfileHash")
 
     def assistant(self):
         self.show()

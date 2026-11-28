@@ -4,7 +4,7 @@ from pathlib import Path
 
 root = Path(__file__).resolve().parents[1]
 folder = root / "groundsurf_geothermal"
-output = root / "Studio-by-GroundSurf-0.5.0-dev.zip"
+output = root / "GroundSurf-Studio-Connector-0.5.0-dev.zip"
 with zipfile.ZipFile(output, "w", compression=zipfile.ZIP_DEFLATED) as z:
     for path in sorted(folder.rglob("*")):
         if (not path.is_file() or "__pycache__" in path.parts

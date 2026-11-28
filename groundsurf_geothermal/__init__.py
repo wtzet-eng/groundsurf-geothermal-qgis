@@ -1,4 +1,4 @@
-"""Studio by GroundSurf QGIS plugin. Importable without QGIS for testing."""
+"""GroundSurf Studio Connector QGIS plugin. Importable without QGIS for testing."""
 
 
 def classFactory(iface):

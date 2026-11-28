@@ -32,9 +32,7 @@ from .inference import API, local_plan, message, request, responses_plan
 from .ollama_setup import installed_models, pull_recommended
 from .package import validate
 from .evidence_discovery import (
-    BGR,
     BGR_TERMS,
-    BGR_CREDIT,
     TERRAIN,
     classify,
     portals,
@@ -43,6 +41,13 @@ from .evidence_discovery import (
 )
 from qgis.core import QgsCoordinateReferenceSystem, QgsCoordinateTransform, QgsPointXY
 from .raster import open_tif
+from .berlin_profiles import (
+    BERLIN,
+    TERMS as BERLIN_TERMS,
+    query_berlin,
+    supports_berlin,
+    profile_url,
+)
 from .workflow import TOOLS, check_plan, default_steps, describe_steps
 
 
@@ -186,6 +191,10 @@ class AssistantDock(QWidget):
         self.send_boreholes.clicked.connect(self.transfer_boreholes)
         layout.addWidget(self.send_boreholes)
         self.send_boreholes.hide()
+        self.open_profile = QPushButton("View original borehole profile…")
+        self.open_profile.clicked.connect(self.view_profile)
+        layout.addWidget(self.open_profile)
+        self.open_profile.hide()
         self.landscape_ready = False
         self.plan_button = QPushButton("Prepare landscape for Studio")
         self.plan_button.clicked.connect(lambda: self.plan(force_manual=True))
@@ -238,6 +247,7 @@ class AssistantDock(QWidget):
         self.boreholes = None
         self.save_boreholes.hide()
         self.send_boreholes.hide()
+        self.open_profile.hide()
         self.controls()
 
     def controls(self):
@@ -269,6 +279,7 @@ class AssistantDock(QWidget):
         )
         self.save_boreholes.setEnabled(not busy)
         self.send_boreholes.setEnabled(not busy)
+        self.open_profile.setEnabled(not busy)
         self.quick_ai.setEnabled(not busy)
         self.manual_return.setEnabled(not busy)
         self.connection.setEnabled(not busy)
@@ -288,6 +299,7 @@ class AssistantDock(QWidget):
             self.boreholes = None
             self.save_boreholes.hide()
             self.send_boreholes.hide()
+            self.open_profile.hide()
             self.controls()
 
     def invalidate_ai_plan(self, *_):
@@ -339,7 +351,7 @@ class AssistantDock(QWidget):
         self.hint.setText(
             {
                 "Manual": "Review a terrain workflow locally. All Processing tools are available.",
-                "Ollama": "Free local AI. Set up once, use in Connect and Studio.",
+                "Ollama": "Free local AI. Set up once, use in Connector and Studio.",
                 "llama.cpp": "Use a trusted local llama-server with tool calling enabled.",
                 "OpenAI API": "Your API key uses separately billed OpenAI API usage.",
                 "ChatGPT": (
@@ -392,7 +404,7 @@ class AssistantDock(QWidget):
         cid = self.account.currentData()
         if not self.ask(
             "Use your ChatGPT plan?",
-            "Open the system browser to authorise GroundSurf Connect. "
+            "Open the system browser to authorise GroundSurf Studio Connector. "
             "Eligible requests use your ChatGPT allowance or available credits.",
         ):
             return
@@ -579,6 +591,7 @@ class AssistantDock(QWidget):
         self.boreholes = None
         self.save_boreholes.hide()
         self.send_boreholes.hide()
+        self.open_profile.hide()
         self.log.clear()
         self.controls()
         try:
@@ -645,13 +658,31 @@ class AssistantDock(QWidget):
                     "Automatic borehole search currently supports Germany. Other portals are manual."
                 )
                 return
-            if not self.ask(
-                "Search official borehole register?",
-                "Query BGR for published borehole locations in this area? "
-                "The geographic bounding box is sent to BGR. No AI account is required. "
-                "Locations and reported total lengths only; not geological logs. "
-                "Up to 2,000 records. Terms: " + BGR_TERMS,
-            ):
+            regional = supports_berlin(bounds)
+            if regional:
+                native = QgsCoordinateTransform(
+                    crs, QgsCoordinateReferenceSystem("EPSG:25833"), self.project
+                ).transformBoundingBox(geom.boundingBox())
+                native_bounds = [
+                    native.xMinimum(),
+                    native.yMinimum(),
+                    native.xMaximum(),
+                    native.yMaximum(),
+                ]
+                source_name = "Berlin geological survey"
+                review = (
+                    "Query the regional Berlin geological database? The area bounds are sent "
+                    "to Berlin. Up to 500 records, with original profile links where supplied. "
+                    "No structured intervals. Regional coverage only. Terms: " + BERLIN_TERMS
+                )
+            else:
+                source_name = "BGR"
+                review = (
+                    "Query BGR for published locations and reported total lengths? "
+                    "The area bounds are sent to BGR. No geological logs. Up to 2,000 records. "
+                    "Terms: " + BGR_TERMS
+                )
+            if not self.ask("Find published boreholes?", review):
                 return
             # Keep full geometry in its original CRS, filter actual points on the GUI thread.
             query_key = self.key
@@ -679,8 +710,12 @@ class AssistantDock(QWidget):
                 self.save_boreholes.setVisible(bool(inside))
                 self.send_boreholes.setVisible(bool(inside))
                 meta = data["groundsurf"]
+                profiles = sum(
+                    bool(profile_url(f["properties"].get("profile_url"))) for f in inside
+                )
+                self.open_profile.setVisible(bool(profiles))
                 self.say(
-                    f"BGR returned {len(inside)} published borehole location(s) inside the selected area."
+                    f"{source_name} returned {len(inside)} published borehole location(s) inside the selected area."
                     + (
                         " Search reached the record limit; choose a smaller area for more complete results."
                         if meta["limit_reached"]
@@ -691,9 +726,15 @@ class AssistantDock(QWidget):
                         if meta["invalid_records"]
                         else ""
                     )
-                    + "\nLocations and reported total lengths only. No layer logs or collar elevations."
+                    + (
+                        f"\n{profiles} original profile link(s). "
+                        "Reported collar heights have unverified vertical datum. "
+                        "No structured intervals; individual links have not all been checked."
+                        if regional
+                        else "\nLocations and reported total lengths only. No layer logs or collar elevations."
+                    )
                     + "\n"
-                    + BGR_CREDIT
+                    + meta["attribution"]
                 )
                 if not inside:
                     self.say(
@@ -701,10 +742,42 @@ class AssistantDock(QWidget):
                     )
 
             self.start_job(
-                "Find official boreholes", lambda cancel: query_bgr(bounds, cancel), completed
+                "Find official boreholes",
+                lambda cancel: (
+                    query_berlin(bounds, native_bounds, cancel)
+                    if regional
+                    else query_bgr(bounds, cancel)
+                ),
+                completed,
             )
         except Exception as exc:
             self.say(str(exc))
+
+    def view_profile(self):
+        if not self.boreholes:
+            return
+        options = [
+            (f["properties"]["borehole_id"], profile_url(f["properties"].get("profile_url")))
+            for f in self.boreholes["features"]
+        ]
+        options = [(key, url) for key, url in options if url]
+        if not options:
+            return
+        choice, ok = QInputDialog.getItem(
+            self,
+            "Original geological profile",
+            "Choose borehole",
+            [key for key, _ in options],
+            0,
+            False,
+        )
+        if ok:
+            url = dict(options).get(choice)
+            if url and self.ask(
+                "Open original profile?", "Open the published image in your browser?"
+            ):
+                if not QDesktopServices.openUrl(QUrl(url)):
+                    self.say("Could not open the profile in your browser.")
 
     def export_boreholes(self):
         if not self.boreholes or not self.boreholes["features"]:
@@ -714,11 +787,15 @@ class AssistantDock(QWidget):
             payload = json.dumps(self.boreholes, ensure_ascii=False, allow_nan=False, indent=2)
             with path.open("x", encoding="utf-8") as handle:
                 handle.write(payload)
-            layer = QgsVectorLayer(str(path), "BGR borehole locations", "ogr")
+            meta = self.boreholes["groundsurf"]
+            label = (
+                "Berlin borehole evidence" if meta["source"] == BERLIN else "BGR borehole locations"
+            )
+            layer = QgsVectorLayer(str(path), label, "ogr")
             if not layer.isValid():
                 raise ValueError("File saved but QGIS could not open it.")
-            layer.setCustomProperty("groundsurf/source", BGR)
-            layer.setCustomProperty("groundsurf/attribution", BGR_CREDIT)
+            layer.setCustomProperty("groundsurf/source", meta["source"])
+            layer.setCustomProperty("groundsurf/attribution", meta["attribution"])
             self.project.addMapLayer(layer)
             self.say(
                 f"Saved {len(self.boreholes['features'])} locations and added them to the map.\n{path}"
@@ -735,7 +812,10 @@ class AssistantDock(QWidget):
             folder = self.connect.new_transfer_folder("Boreholes")
             (folder / "boreholes.geojson").write_text(payload, encoding="utf-8")
             self.say("Borehole transfer saved: " + str(folder))
-            self.connect.open_studio_folder(str(folder), boreholes=True)
+            regional = self.boreholes["groundsurf"]["source"] == BERLIN
+            if regional:
+                self.say("Regional profiles require standalone Studio 0.11 Preview 4 or later.")
+            self.connect.open_studio_folder(str(folder), boreholes=True, profile_evidence=regional)
         except Exception as exc:
             self.say(str(exc))
 

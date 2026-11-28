@@ -1,4 +1,4 @@
-"""Studio by GroundSurf 0.4.14: QGIS geological modelling workspace."""
+"""GroundSurf Studio Connector 0.5.0: QGIS geological modelling workspace."""
 import os
 from shutil import which
 from pathlib import Path
@@ -37,11 +37,11 @@ class GroundSurfGeothermalPlugin:
 
     def initGui(self):
         self.action = QAction(
-            QIcon.fromTheme("applications-science"), "Studio by GroundSurf",
+            QIcon.fromTheme("applications-science"), "GroundSurf Studio Connector",
             self.iface.mainWindow(),
         )
         self.action.triggered.connect(self.open_dock)
-        self.iface.addPluginToMenu("&Studio by GroundSurf", self.action)
+        self.iface.addPluginToMenu("&GroundSurf Studio Connector", self.action)
         self.iface.addToolBarIcon(self.action)
 
     def open_dock(self):
@@ -67,7 +67,7 @@ class GroundSurfGeothermalPlugin:
             for layer_id in getattr(self.dock, "_preview_line_ids", {}).values():
                 QgsProject.instance().removeMapLayer(layer_id)
         if self.action is not None:
-            self.iface.removePluginMenu("&Studio by GroundSurf", self.action)
+            self.iface.removePluginMenu("&GroundSurf Studio Connector", self.action)
             self.iface.removeToolBarIcon(self.action)
         if self.dock is not None:
             self.iface.removeDockWidget(self.dock)
@@ -86,7 +86,7 @@ class _GeothermalStudioWindow(QDialog):
     def __init__(self, owner):
         super().__init__(owner.iface.mainWindow(), Qt.WindowType.Window)
         self.owner = owner
-        self.setWindowTitle("Studio by GroundSurf · QGIS workspace")
+        self.setWindowTitle("GroundSurf Studio Connector · QGIS workspace")
         self.setObjectName("GroundSurfGeothermalStudio")
         self.setAttribute(Qt.WidgetAttribute.WA_DeleteOnClose, True)
         self.setMinimumSize(690, 465)
@@ -113,7 +113,7 @@ class _GeothermalStudioWindow(QDialog):
 class GeothermalDock(ContactToolsMixin, ModelToolsMixin,
                      SectionToolsMixin, WellManagerMixin, QDockWidget):
     def __init__(self, iface, parent=None):
-        super().__init__("Studio by GroundSurf · Geology", parent)
+        super().__init__("GroundSurf Studio Connector · Geology", parent)
         self.iface = iface
         self.path = None
         self.well_layer = None
@@ -142,7 +142,7 @@ class GeothermalDock(ContactToolsMixin, ModelToolsMixin,
         self.main_layout = outer
         outer.setContentsMargins(9, 8, 9, 8)
         outer.setSpacing(5)
-        heading = QLabel("STUDIO BY GROUNDSURF  /  GEOLOGY")
+        heading = QLabel("GROUNDSURF STUDIO CONNECTOR")
         heading.setObjectName("gsHeading")
         outer.addWidget(heading)
         description = QLabel("Wells · Logs · 3D Models · Maps")
@@ -251,7 +251,7 @@ class GeothermalDock(ContactToolsMixin, ModelToolsMixin,
         self.info = QTextEdit()
         self.info.setReadOnly(True)
         self.info.setPlainText(
-            "Studio by GroundSurf 0.4.14\n\n"
+            "GroundSurf Studio Connector 0.5.0\n\n"
             "Local GeoPackage projects and WGS84 well locations.\n"
             "Depths: metres, positive downward.\n"
             "Elevations: metres, datum supplied by user.\n\n"
@@ -262,7 +262,7 @@ class GeothermalDock(ContactToolsMixin, ModelToolsMixin,
         tabs.addTab(self.info, "Details")
         help_tab = QWidget()
         help_layout = QVBoxLayout(help_tab)
-        contact_header = QLabel("Questions or suggestions for Studio by GroundSurf?")
+        contact_header = QLabel("Questions or suggestions for GroundSurf Studio Connector?")
         contact_header.setWordWrap(True)
         help_layout.addWidget(contact_header)
         email_label = QLabel("Feedback: tzuk.ls@outlook.com")
@@ -322,7 +322,7 @@ class GeothermalDock(ContactToolsMixin, ModelToolsMixin,
             discovery = QWidget()
             controls = QVBoxLayout(discovery)
             message = QLabel("Disable the old GroundSurf Connect plugin in QGIS Plugin Manager, "
-                             "then reload Studio by GroundSurf in Plugin Manager. Modelling is still available.")
+                             "then reload GroundSurf Studio Connector in Plugin Manager. Modelling is still available.")
             message.setWordWrap(True)
             controls.addWidget(message)
             controls.addStretch()
@@ -455,7 +455,7 @@ class GeothermalDock(ContactToolsMixin, ModelToolsMixin,
         self.status.setText(message)
         # GroundSurf's own diagnostics persist in QGIS's Message Log,
         # instead of leaving only the unhelpful generic "Python error".
-        QgsMessageLog.logMessage(message, "Studio by GroundSurf", Qgis.MessageLevel.Warning)
+        QgsMessageLog.logMessage(message, "GroundSurf Studio Connector", Qgis.MessageLevel.Warning)
         QMessageBox.warning(self, title, str(exc))
 
     def _require_project(self):
